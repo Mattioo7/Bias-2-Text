@@ -10,12 +10,9 @@ import torch.nn.functional as nnf
 from torchvision import transforms
 from typing import Tuple, List, Union, Optional
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
-from gpt_captioning import generate_gpt_caption
 
 import skimage.io as io
 from PIL import Image
-
-all_models = ["clipcap", "gpt-4o-mini"]
 
 N = type(None)
 V = np.array
@@ -263,7 +260,7 @@ def extract_caption(image_path, model):
         image = preprocess(pil_image).unsqueeze(0).to(clip_device)
         with torch.no_grad():
             prefix = clip_model.encode_image(image).to(clip_device, dtype=torch.float32)
-            prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1)
+            prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1) # TL: implement that more captions can be generated
         generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
         return generated_text_prefix
     elif "gpt" in model:
