@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument("--dataset", type = str, default = 'waterbird', help="dataset") #celeba, waterbird
     parser.add_argument("--model", type=str, default='best_model_CUB_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_CUB_erm.pth, best_model_CUB_dro.pth
     parser.add_argument("--captioning_model", type=str, default='clipcap', choices=["clipcap", "gpt-4o-mini"])
-    parser.add_argument("--no-extract_caption", action='store_true', help="Set this flag if the captions sould NOT be extracted")
+    parser.add_argument("--no-extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
     parser.add_argument("--save_result", default = True)
     args = parser.parse_args()
     return args
