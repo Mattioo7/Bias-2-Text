@@ -168,10 +168,10 @@ def generate_beam(model, tokenizer, beam_size: int = 5, prompt=None, embed=None,
     output_texts = [tokenizer.decode(output[:int(length)]) for output, length in zip(output_list, seq_lengths)]
     order = scores.argsort(descending=True)
     output_texts = [output_texts[i] for i in order]
-    return output_texts # TL: print all output variants
+    return output_texts  # TL: print all output variants
 
 
-def generate2( # TL: This methode is used
+def generate2(  # TL: This methode is used
         model,
         tokenizer,
         tokens=None,
@@ -180,8 +180,10 @@ def generate2( # TL: This methode is used
         entry_count=1,
         entry_length=67,  # maximum number of words
         top_p=0.8,
-        temperature=1., # TL: possibility to increase the temperature here
-        stop_token: str = '.', # TL this stop token only allows one sentence (maybe not what we want?)
+        temperature=1.,
+        stop_token: str = '.',  # TL this stop token only allows one sentence (maybe not what we want?)
+        multiple_captions=False,  # enable ensemble of multiple concatenated captions per image
+        num_captions = 10  # Generate num_captions diverse captions (only active when multiple_captions=True)
 ):
     model.eval()
     generated_num = 0
@@ -191,45 +193,87 @@ def generate2( # TL: This methode is used
     device = next(model.parameters()).device
 
     with torch.no_grad():
+        if multiple_captions:
+            # Use clipcap model but generate n captions that are concatenated together to form the final more robust description
+            concatenated_captions = []
+            for _ in range(num_captions):
+                tokens = None
+                generated = embed if embed is not None else None
+                for i in range(entry_length):
+                    outputs = model.gpt(inputs_embeds=generated) if generated is not None else model.gpt(tokens)
+                    logits = outputs.logits
+                    logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)
 
-        for entry_idx in range(entry_count):
-            if embed is not None:
-                generated = embed
-            else:
-                if tokens is None:
-                    tokens = torch.tensor(tokenizer.encode(prompt))
-                    tokens = tokens.unsqueeze(0).to(device)
+                    # Apply top-p sampling
+                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                    cumulative_probs = torch.cumsum(nnf.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+                    indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                    logits[:, indices_to_remove] = filter_value
 
-                generated = model.gpt.transformer.wte(tokens)
+                    # Sample the next token
+                    probabilities = nnf.softmax(logits, dim=-1)
+                    next_token = torch.multinomial(probabilities, num_samples=1)  # Sample instead of greedy
+                    next_token_embed = model.gpt.transformer.wte(next_token)
 
-            for i in range(entry_length):
+                    if tokens is None:
+                        tokens = next_token
+                    else:
+                        tokens = torch.cat((tokens, next_token), dim=1)
 
-                outputs = model.gpt(inputs_embeds=generated)
-                logits = outputs.logits
-                logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)
-                sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-                cumulative_probs = torch.cumsum(nnf.softmax(sorted_logits, dim=-1), dim=-1)
-                sorted_indices_to_remove = cumulative_probs > top_p
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                                                    ..., :-1
-                                                    ].clone()
-                sorted_indices_to_remove[..., 0] = 0
+                    generated = torch.cat((generated, next_token_embed), dim=1) if generated is not None else next_token_embed
+                    if stop_token_index == next_token.item():
+                        break
 
-                indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                logits[:, indices_to_remove] = filter_value
-                next_token = torch.argmax(logits, -1).unsqueeze(0)
-                next_token_embed = model.gpt.transformer.wte(next_token)
-                if tokens is None:
-                    tokens = next_token
+                output_list = list(tokens.squeeze().cpu().numpy())
+                output_text = tokenizer.decode(output_list)
+                concatenated_captions.append(output_text.strip())
+
+            # Concatenate captions with a space in between
+            final_output = " ".join(concatenated_captions)
+            return final_output
+        else:
+            # Use original CLIPCap model for one caption
+            for entry_idx in range(entry_count):
+                if embed is not None:
+                    generated = embed
                 else:
-                    tokens = torch.cat((tokens, next_token), dim=1)
-                generated = torch.cat((generated, next_token_embed), dim=1)
-                if stop_token_index == next_token.item():
-                    break
+                    if tokens is None:
+                        tokens = torch.tensor(tokenizer.encode(prompt))
+                        tokens = tokens.unsqueeze(0).to(device)
 
-            output_list = list(tokens.squeeze().cpu().numpy())
-            output_text = tokenizer.decode(output_list)
-            generated_list.append(output_text)
+                    generated = model.gpt.transformer.wte(tokens)
+
+                for i in range(entry_length):
+
+                    outputs = model.gpt(inputs_embeds=generated)
+                    logits = outputs.logits
+                    logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)
+                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                    cumulative_probs = torch.cumsum(nnf.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
+                                                        ..., :-1
+                                                        ].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+
+                    indices_to_remove = sorted_indices[sorted_indices_to_remove]
+                    logits[:, indices_to_remove] = filter_value
+                    next_token = torch.argmax(logits, -1).unsqueeze(0)
+                    next_token_embed = model.gpt.transformer.wte(next_token)
+                    if tokens is None:
+                        tokens = next_token
+                    else:
+                        tokens = torch.cat((tokens, next_token), dim=1)
+                    generated = torch.cat((generated, next_token_embed), dim=1)
+                    if stop_token_index == next_token.item():
+                        break
+
+                output_list = list(tokens.squeeze().cpu().numpy())
+                output_text = tokenizer.decode(output_list)
+                generated_list.append(output_text)
 
     return generated_list[0]
 
@@ -268,6 +312,10 @@ def extract_caption(image_path, model):
         image = preprocess(pil_image).unsqueeze(0).to(clip_device)
         with torch.no_grad():
             prefix = clip_model.encode_image(image).to(clip_device, dtype=torch.float32)
-            prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1) # TL: implement that more captions can be generated
-        generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
+            prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1)
+        if "multicap" in model:
+            # Use clipcap model but generate n captions that are concatenated together to form the final more robust description
+            generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed, multiple_captions=True, temperature=0.4, top_p=0.8, num_captions=10)
+        else:
+            generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
         return generated_text_prefix
