@@ -106,6 +106,9 @@ class ClipCaptionPrefix(ClipCaptionModel):
 
 def generate_beam(model, tokenizer, beam_size: int = 5, prompt=None, embed=None,
                   entry_length=67, temperature=1., stop_token: str = '.'):
+    # TL: stop_token is '.' why is only one sentence allowed?
+    # TL: try out this beam search how dos it behaves?
+    # TL: generate_beam is not used I think
 
     model.eval()
     stop_token_index = tokenizer.encode(stop_token)[0]
@@ -128,7 +131,8 @@ def generate_beam(model, tokenizer, beam_size: int = 5, prompt=None, embed=None,
             logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)
             logits = logits.softmax(-1).log()
             if scores is None:
-                scores, next_tokens = logits.topk(beam_size, -1)
+                scores, next_tokens = logits.topk(beam_size, -1) # greedy -> we dont want that
+                # TL: use sampling here instead
                 generated = generated.expand(beam_size, *generated.shape[1:])
                 next_tokens, scores = next_tokens.permute(1, 0), scores.squeeze(0)
                 if tokens is None:
@@ -162,10 +166,10 @@ def generate_beam(model, tokenizer, beam_size: int = 5, prompt=None, embed=None,
     output_texts = [tokenizer.decode(output[:int(length)]) for output, length in zip(output_list, seq_lengths)]
     order = scores.argsort(descending=True)
     output_texts = [output_texts[i] for i in order]
-    return output_texts
+    return output_texts # TL: print all output variants
 
 
-def generate2(
+def generate2( # TL: This methode is used
         model,
         tokenizer,
         tokens=None,
@@ -174,8 +178,8 @@ def generate2(
         entry_count=1,
         entry_length=67,  # maximum number of words
         top_p=0.8,
-        temperature=1.,
-        stop_token: str = '.',
+        temperature=1., # TL: possibility to increase the temperature here
+        stop_token: str = '.', # TL this stop token only allows one sentence (maybe not what we want?)
 ):
     model.eval()
     generated_num = 0
@@ -257,6 +261,6 @@ def extract_caption(image_path):
     image = preprocess(pil_image).unsqueeze(0).to(clip_device)
     with torch.no_grad():
         prefix = clip_model.encode_image(image).to(clip_device, dtype=torch.float32)
-        prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1)
+        prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1) # TL: implement that more captions can be generated
     generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
     return generated_text_prefix 
