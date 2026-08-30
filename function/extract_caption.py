@@ -14,6 +14,10 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel
 import skimage.io as io
 from PIL import Image
 
+from function.gpt_captioning import generate_gpt_caption
+
+all_captioning_models = ["clipcap", "gpt-4o", "gpt-4o-mini"]
+
 N = type(None)
 V = np.array
 ARRAY = np.ndarray
@@ -256,8 +260,8 @@ caption_model = caption_model.eval()
 caption_model = caption_model.to(clip_device)
 
 def extract_caption(image_path, model):
-    if model not in all_models:
-        raise RuntimeError(f"Model must be within {all_models}, but was {model}")
+    if model not in all_captioning_models:
+        raise RuntimeError(f"Model must be within {all_captioning_models}, but was {model}")
     if model == "clipcap":
         image = io.imread(image_path)
         pil_image = Image.fromarray(image)
