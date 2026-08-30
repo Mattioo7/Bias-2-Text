@@ -32,7 +32,7 @@ import warnings
 from torch.serialization import SourceChangeWarning
 warnings.filterwarnings("ignore", category=SourceChangeWarning)
 
-all_captioning_models = ["clipcap", "gpt-4o", "gpt-4o-mini"]
+all_captioning_models = ["clipcap", "multicap", "gpt-4o", "gpt-4o-mini"]
 all_keyword_extraction_models = ["yake", "gpt-4o", "gpt-4o-mini"]
 all_datasets = ['waterbird', 'celeba']
 
