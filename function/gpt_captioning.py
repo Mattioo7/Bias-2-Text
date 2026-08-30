@@ -67,5 +67,5 @@ def generate_gpt_caption(img_path, prompt=default_prompt_2, model="gpt-4o-mini")
         model=model,
         max_tokens=300,
     )
-    print(chat_completion.choices[0].message.content)
+    # print(chat_completion.choices[0].message.content)
     return chat_completion.choices[0].message.content

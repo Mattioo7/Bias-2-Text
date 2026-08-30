@@ -16,8 +16,6 @@ from PIL import Image
 
 from function.gpt_captioning import generate_gpt_caption
 
-all_captioning_models = ["clipcap", "gpt-4o", "gpt-4o-mini"]
-
 N = type(None)
 V = np.array
 ARRAY = np.ndarray
@@ -260,9 +258,11 @@ caption_model = caption_model.eval()
 caption_model = caption_model.to(clip_device)
 
 def extract_caption(image_path, model):
-    if model not in all_captioning_models:
-        raise RuntimeError(f"Model must be within {all_captioning_models}, but was {model}")
-    if model == "clipcap":
+    if "gpt" in model:
+        caption = generate_gpt_caption(image_path)
+        return caption
+    else:
+        # Use clipcap if not otherwise specified
         image = io.imread(image_path)
         pil_image = Image.fromarray(image)
         image = preprocess(pil_image).unsqueeze(0).to(clip_device)
@@ -271,6 +271,3 @@ def extract_caption(image_path, model):
             prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1) # TL: implement that more captions can be generated
         generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
         return generated_text_prefix
-    elif "gpt" in model:
-        caption = generate_gpt_caption(image_path)
-        return caption

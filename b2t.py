@@ -13,8 +13,9 @@ from data.celeba import CelebA, get_transform_celeba
 from data.waterbirds import Waterbirds, get_transform_cub
 
 # for various functions
-from function.extract_caption import extract_caption, all_captioning_models ## default-> cuda:0/ clip:ViT-B/32
+from function.extract_caption import extract_caption ## default-> cuda:0/ clip:ViT-B/32
 from function.extract_keyword import extract_keyword
+from function.gpt_keywords import extract_gpt_keywords
 from function.calculate_similarity import calc_similarity
 from function.print_similarity import print_similarity
 
@@ -31,11 +32,16 @@ import warnings
 from torch.serialization import SourceChangeWarning
 warnings.filterwarnings("ignore", category=SourceChangeWarning)
 
+all_captioning_models = ["clipcap", "gpt-4o", "gpt-4o-mini"]
+all_keyword_extraction_models = ["yake", "gpt-4o", "gpt-4o-mini"]
+all_datasets = ['waterbird', 'celeba']
+
 def parse_args():
     parser = argparse.ArgumentParser()    
-    parser.add_argument("--dataset", type = str, default = 'waterbird', help="dataset") #celeba, waterbird
+    parser.add_argument("--dataset", type = str, default = 'waterbird', choices=all_datasets, help="dataset") #celeba, waterbird
     parser.add_argument("--model", type=str, default='best_model_Waterbirds_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_Waterbirds_erm.pth, best_model_Waterbirds_dro.pth
     parser.add_argument("--captioning_model", type=str, default='clipcap', choices=all_captioning_models)
+    parser.add_argument("--keyword_extraction_model", type=str, default='yake', choices=all_keyword_extraction_models)
     parser.add_argument("--number_val_images", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
     parser.add_argument("--no-extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
     parser.add_argument("--save_result", default = True)
@@ -55,12 +61,12 @@ if __name__ == "__main__":  #MR added this to prevent an error
         class_names = ['landbird', 'waterbird']
         # group_names = ['landbird_land', 'landbird_water', 'waterbird_land', 'waterbird_water']
         image_dir = 'data/cub/data/waterbird_complete95_forest2water2/'
-        caption_dir = 'data/cub/caption/'
+        caption_dir = 'data/cub/caption/'  # 'data/cub/caption_gpt-4o-mini/'
         if not os.path.exists(caption_dir):
             os.makedirs(caption_dir)
             print(f"Directory '{caption_dir}' created.")
         else:
-            print(f"Directory '{caption_dir}' already exists. Writing content into this directory")
+            print(f"Directory '{caption_dir}' already exists. Writing content into or reading content from this directory")
         val_dataset = Waterbirds(data_dir='data/cub/data/waterbird_complete95_forest2water2', split='val', transform=preprocess)
         if args.number_val_images is not None:
             # ensure that the given number is not too large
@@ -72,24 +78,26 @@ if __name__ == "__main__":  #MR added this to prevent an error
         class_names = ['not blond', 'blond']
         # group_names = ['not blond_female', 'not blond_male', 'blond_female', 'blond_male']
         image_dir = 'data/celebA/data/img_align_celeba/'
-        caption_dir = 'data/celebA/caption/'
+        caption_dir = 'data/celebA/caption/'  # 'data/celebA/caption_gpt-4o-mini/'
         if not os.path.exists(caption_dir):
             os.makedirs(caption_dir)
             print(f"Directory '{caption_dir}' created.")
         else:
-            print(f"Directory '{caption_dir}' already exists. Writing content into this directory")
+            print(f"Directory '{caption_dir}' already exists. Writing content into or reading content from this director")
         val_dataset = CelebA(data_dir='data/celebA/data/', split='val', transform=preprocess)
         if args.number_val_images is not None:
             # ensure that the given number is not too large
             num_imgs = min(args.number_val_images, len(val_dataset))
             print(f"-------- LIMIT DATASET TO {num_imgs} IMAGES TO REDUCE COSTS!!! Originally {len(val_dataset)} images -----------")
             val_dataset = Subset(val_dataset, range(num_imgs))
+    else:
+        raise ValueError(f"Dataset must be within {all_datasets}, but was {args.dataset}")
 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
 
-    result_dir = 'result/'
+    result_dir = 'result/'  # 'result_gpt-4o-mini_2/'
     model_dir = 'model/'
-    diff_dir = 'diff/'
+    diff_dir = 'diff/'  # 'diff_gpt-4o-mini_2/'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     if not os.path.exists(diff_dir):
@@ -179,8 +187,13 @@ if __name__ == "__main__":  #MR added this to prevent an error
     caption_wrong_class_0 = ' '.join(df_wrong_class_0['caption'].tolist())
     caption_wrong_class_1 = ' '.join(df_wrong_class_1['caption'].tolist())
 
-    keywords_class_0 = extract_keyword(caption_wrong_class_0)
-    keywords_class_1 = extract_keyword(caption_wrong_class_1)
+    if "gpt" in args.keyword_extraction_model:
+        keywords_class_0 = extract_gpt_keywords(caption_wrong_class_0)
+        keywords_class_1 = extract_gpt_keywords(caption_wrong_class_1)
+    else:
+        # use yake if not otherwise specified
+        keywords_class_0 = extract_keyword(caption_wrong_class_0)
+        keywords_class_1 = extract_keyword(caption_wrong_class_1)
 
     # calculate similarity
     print("Start calculating scores..")

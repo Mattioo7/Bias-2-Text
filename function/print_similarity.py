@@ -28,8 +28,12 @@ def print_similarity(keyword_0, keyword_1, dist_0, dist_1, df_0):
         biased = biased_dataset.shape[0]
         correct_of_biased = sum(biased_dataset['actual'] == biased_dataset['pred'])
         # correct_of_biased = sum(biased_dataset['correct'])
-        biased_accuracy = correct_of_biased / biased
-        result["Acc."].append(biased_accuracy)
+        if biased == 0:
+            print(f"Warning: The extracted keyword {keyword} was not found in any caption!")
+            result["Acc."].append("X")
+        else:
+            biased_accuracy = correct_of_biased / biased
+            result["Acc."].append(biased_accuracy)
         if diff < 0:
             result["Bias"].append("")
             continue
