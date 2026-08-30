@@ -239,7 +239,14 @@ prefix_length = 10
 
 caption_model = ClipCaptionModel(prefix_length)
 
-caption_model.load_state_dict(torch.load('function/clipcap.pt', map_location=CPU)) 
+state_dict = torch.load('function/clipcap.pt', map_location=CPU)
+#print(state_dict.keys())
+# Filter and print keys and values for keys containing 'masked_bias' or 'bias'
+#with open('masked_bias_and_bias_values.txt', 'w') as f:
+#    for key, value in state_dict.items():
+#        if 'attn.masked_bias' in key or 'attn.bias' in key:
+#            f.write(f"{key}: {value}\n")
+caption_model.load_state_dict(state_dict, strict=False)
 
 caption_model = caption_model.eval()
 caption_model = caption_model.to(clip_device)
