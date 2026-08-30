@@ -5,6 +5,7 @@ import base64
 from dotenv import load_dotenv
 import ast
 import re
+from tqdm import tqdm
 
 
 ### IGNORE THIS SCRIPT FOR NOW ###
@@ -130,7 +131,7 @@ def calculate_keyword_occurrences(images, keywords, model="gpt-4o-mini"):
         A Counter object with counts of each keyword.
     """
     keyword_occurrences = Counter()
-    for image in images:
+    for image in tqdm(images, desc="Processing images"):
         # Get the binary vector for keyword presence
         if model == "random":
             binary_vector = query_vqa_random(keywords)
@@ -143,7 +144,7 @@ def calculate_keyword_occurrences(images, keywords, model="gpt-4o-mini"):
     return keyword_occurrences
 
 
-def calculate_vqs_score(corr_images, wrong_images, keywords, model="gpt-4o-mini"):
+def calculate_vqa_score(corr_images, wrong_images, keywords, model="gpt-4o-mini"):
     # This methods is called for each class individually
     # It gets a set of correctly and incorrectly classified images and also potential bias keywords for this class
     # Then a visual questioning answering model is called for each image and it should respond which of the keywords are present in the image
