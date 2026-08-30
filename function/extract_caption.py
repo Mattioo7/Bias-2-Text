@@ -10,9 +10,12 @@ import torch.nn.functional as nnf
 from torchvision import transforms
 from typing import Tuple, List, Union, Optional
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
+from gpt_captioning import generate_gpt_caption
 
 import skimage.io as io
 from PIL import Image
+
+all_models = ["clipcap", "gpt-4o-mini"]
 
 N = type(None)
 V = np.array
@@ -251,12 +254,18 @@ caption_model.load_state_dict(state_dict, strict=False)
 caption_model = caption_model.eval()
 caption_model = caption_model.to(clip_device)
 
-def extract_caption(image_path):
-    image = io.imread(image_path)
-    pil_image = Image.fromarray(image)
-    image = preprocess(pil_image).unsqueeze(0).to(clip_device)
-    with torch.no_grad():
-        prefix = clip_model.encode_image(image).to(clip_device, dtype=torch.float32)
-        prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1)
-    generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
-    return generated_text_prefix 
+def extract_caption(image_path, model):
+    if model not in all_models:
+        raise RuntimeError(f"Model must be within {all_models}, but was {model}")
+    if model == "clipcap":
+        image = io.imread(image_path)
+        pil_image = Image.fromarray(image)
+        image = preprocess(pil_image).unsqueeze(0).to(clip_device)
+        with torch.no_grad():
+            prefix = clip_model.encode_image(image).to(clip_device, dtype=torch.float32)
+            prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1)
+        generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
+        return generated_text_prefix
+    elif "gpt" in model:
+        caption = generate_gpt_caption(image_path)
+        return caption

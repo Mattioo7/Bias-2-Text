@@ -35,6 +35,7 @@ def parse_args():
     parser = argparse.ArgumentParser()    
     parser.add_argument("--dataset", type = str, default = 'waterbird', help="dataset") #celeba, waterbird
     parser.add_argument("--model", type=str, default='best_model_CUB_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_CUB_erm.pth, best_model_CUB_dro.pth
+    parser.add_argument("--captioning_model", type=str, default='clipcap', choices=["clipcap", "gpt-4o-mini"])
     parser.add_argument("--no-extract_caption", action='store_true', help="Set this flag if the captions sould NOT be extracted")
     parser.add_argument("--save_result", default = True)
     args = parser.parse_args()
@@ -81,7 +82,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
         print("Start extracting captions..")
         for x, (y, y_group, y_spurious), idx, path in tqdm(val_dataset):
             image_path = image_dir + path
-            caption = extract_caption(image_path)
+            caption = extract_caption(image_path, args.captioning_model)
             if not os.path.exists(caption_dir):
                 os.makedirs(caption_dir)
             caption_path = caption_dir + path.split("/")[-1][:-4] + ".txt"
