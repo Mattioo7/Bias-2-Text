@@ -6,3 +6,4 @@ diff/
 function/clipcap.pt
 function/conceptual_weights.pt
 __pycache__
+.env
