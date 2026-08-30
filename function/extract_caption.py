@@ -183,6 +183,7 @@ def generate2(  # TL: This methode is used
         temperature=1.,
         stop_token: str = '.',  # TL this stop token only allows one sentence (maybe not what we want?)
         multiple_captions=False,  # enable ensemble of multiple concatenated captions per image
+        num_captions = 10  # Generate num_captions diverse captions (only active when multiple_captions=True)
 ):
     model.eval()
     generated_num = 0
@@ -194,7 +195,6 @@ def generate2(  # TL: This methode is used
     with torch.no_grad():
         if multiple_captions:
             # Use clipcap model but generate n captions that are concatenated together to form the final more robust description
-            num_captions = 5  # Generate num_captions diverse captions
             concatenated_captions = []
             for _ in range(num_captions):
                 tokens = None
@@ -315,7 +315,7 @@ def extract_caption(image_path, model):
             prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1)
         if "multicap" in model:
             # Use clipcap model but generate n captions that are concatenated together to form the final more robust description
-            generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed, multiple_captions=True, temperature=1.)
+            generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed, multiple_captions=True, temperature=0.4, top_p=0.8, num_captions=10)
         else:
             generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
         return generated_text_prefix
