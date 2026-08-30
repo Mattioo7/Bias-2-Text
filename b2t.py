@@ -4,7 +4,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 import numpy as np
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 import torch
 import clip
 
@@ -13,7 +13,7 @@ from data.celeba import CelebA, get_transform_celeba
 from data.waterbirds import Waterbirds, get_transform_cub
 
 # for various functions
-from function.extract_caption import extract_caption ## default-> cuda:0/ clip:ViT-B/32
+from function.extract_caption import extract_caption, all_captioning_models ## default-> cuda:0/ clip:ViT-B/32
 from function.extract_keyword import extract_keyword
 from function.calculate_similarity import calc_similarity
 from function.print_similarity import print_similarity
@@ -34,8 +34,9 @@ warnings.filterwarnings("ignore", category=SourceChangeWarning)
 def parse_args():
     parser = argparse.ArgumentParser()    
     parser.add_argument("--dataset", type = str, default = 'waterbird', help="dataset") #celeba, waterbird
-    parser.add_argument("--model", type=str, default='best_model_CUB_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_CUB_erm.pth, best_model_CUB_dro.pth
-    parser.add_argument("--captioning_model", type=str, default='clipcap', choices=["clipcap", "gpt-4o-mini"])
+    parser.add_argument("--model", type=str, default='best_model_Waterbirds_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_Waterbirds_erm.pth, best_model_Waterbirds_dro.pth
+    parser.add_argument("--captioning_model", type=str, default='clipcap', choices=all_captioning_models)
+    parser.add_argument("--number_val_images", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
     parser.add_argument("--no-extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
     parser.add_argument("--save_result", default = True)
     args = parser.parse_args()
@@ -55,19 +56,36 @@ if __name__ == "__main__":  #MR added this to prevent an error
         # group_names = ['landbird_land', 'landbird_water', 'waterbird_land', 'waterbird_water']
         image_dir = 'data/cub/data/waterbird_complete95_forest2water2/'
         caption_dir = 'data/cub/caption/'
+        if not os.path.exists(caption_dir):
+            os.makedirs(caption_dir)
+            print(f"Directory '{caption_dir}' created.")
+        else:
+            print(f"Directory '{caption_dir}' already exists. Writing content into this directory")
         val_dataset = Waterbirds(data_dir='data/cub/data/waterbird_complete95_forest2water2', split='val', transform=preprocess)
+        if args.number_val_images is not None:
+            # ensure that the given number is not too large
+            num_imgs = min(args.number_val_images, len(val_dataset))
+            print(f"-------- LIMIT DATASET TO {num_imgs} IMAGES TO REDUCE COSTS!!! Originally {len(val_dataset)} images -----------")
+            val_dataset = Subset(val_dataset, range(num_imgs))
     elif args.dataset == 'celeba':
         preprocess = get_transform_celeba()
         class_names = ['not blond', 'blond']
         # group_names = ['not blond_female', 'not blond_male', 'blond_female', 'blond_male']
         image_dir = 'data/celebA/data/img_align_celeba/'
         caption_dir = 'data/celebA/caption/'
+        if not os.path.exists(caption_dir):
+            os.makedirs(caption_dir)
+            print(f"Directory '{caption_dir}' created.")
+        else:
+            print(f"Directory '{caption_dir}' already exists. Writing content into this directory")
         val_dataset = CelebA(data_dir='data/celebA/data/', split='val', transform=preprocess)
+        if args.number_val_images is not None:
+            # ensure that the given number is not too large
+            num_imgs = min(args.number_val_images, len(val_dataset))
+            print(f"-------- LIMIT DATASET TO {num_imgs} IMAGES TO REDUCE COSTS!!! Originally {len(val_dataset)} images -----------")
+            val_dataset = Subset(val_dataset, range(num_imgs))
 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
-
-
-
 
     result_dir = 'result/'
     model_dir = 'model/'
@@ -166,6 +184,8 @@ if __name__ == "__main__":  #MR added this to prevent an error
 
     # calculate similarity
     print("Start calculating scores..")
+    if args.number_val_images is not None:
+        print("Warning: If all images are classified correctly, then score calculation will throw an error")
     similarity_wrong_class_0 = calc_similarity(image_dir, df_wrong_class_0['image'], keywords_class_0)
     similarity_correct_class_0 = calc_similarity(image_dir, df_correct_class_0['image'], keywords_class_0)
     similarity_wrong_class_1 = calc_similarity(image_dir, df_wrong_class_1['image'], keywords_class_1)
