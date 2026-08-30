@@ -61,7 +61,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
         # group_names = ['not blond_female', 'not blond_male', 'blond_female', 'blond_male']
         image_dir = 'data/celebA/data/img_align_celeba/'
         caption_dir = 'data/celebA/caption/'
-        val_dataset = CelebA(data_dir='data/celebA/data/', split='val', transform=preprocess)
+        val_dataset = CelebA(data_dir='data/celebA/', split='val', transform=preprocess)
 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
 
