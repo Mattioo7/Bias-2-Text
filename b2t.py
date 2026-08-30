@@ -18,6 +18,7 @@ from function.extract_keyword import extract_keyword
 from function.gpt_keywords import extract_gpt_keywords
 from function.calculate_similarity import calc_similarity
 from function.print_similarity import print_similarity
+from function.vqa_score import calculate_vqs_score
 
 from tqdm import tqdm
 import os
@@ -35,6 +36,7 @@ warnings.filterwarnings("ignore", category=SourceChangeWarning)
 all_captioning_models = ["clipcap", "multicap", "gpt-4o", "gpt-4o-mini"]
 all_keyword_extraction_models = ["yake", "gpt-4o", "gpt-4o-mini"]
 all_datasets = ['waterbird', 'celeba']
+all_scores = ['clip', 'vqa']
 
 def parse_args():
     parser = argparse.ArgumentParser()    
@@ -42,8 +44,9 @@ def parse_args():
     parser.add_argument("--model", type=str, default='best_model_Waterbirds_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_Waterbirds_erm.pth, best_model_Waterbirds_dro.pth
     parser.add_argument("--captioning_model", type=str, default='clipcap', choices=all_captioning_models)
     parser.add_argument("--keyword_extraction_model", type=str, default='yake', choices=all_keyword_extraction_models)
+    parser.add_argument("--score", type=str, default='clip', choices=all_scores)
     parser.add_argument("--number_val_images", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
-    parser.add_argument("--no-extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
+    parser.add_argument("--no_extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
     parser.add_argument("--save_result", default = True)
     args = parser.parse_args()
     return args
@@ -61,7 +64,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
         class_names = ['landbird', 'waterbird']
         # group_names = ['landbird_land', 'landbird_water', 'waterbird_land', 'waterbird_water']
         image_dir = 'data/cub/data/waterbird_complete95_forest2water2/'
-        caption_dir = 'data/cub/caption/'  # 'data/cub/caption_gpt-4o-mini/'
+        caption_dir = 'data/cub/caption_gpt-4o-mini/'  # 'data/cub/caption_gpt-4o-mini/'
         if not os.path.exists(caption_dir):
             os.makedirs(caption_dir)
             print(f"Directory '{caption_dir}' created.")
@@ -95,9 +98,9 @@ if __name__ == "__main__":  #MR added this to prevent an error
 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
 
-    result_dir = 'result/'  # 'result_gpt-4o-mini_2/'
+    result_dir = 'result_vqa_full_gpt/'  # 'result_gpt-4o-mini_2/'
     model_dir = 'model/'
-    diff_dir = 'diff/'  # 'diff_gpt-4o-mini_2/'
+    diff_dir = 'diff_vqa_full_gpt/'  # 'diff_gpt-4o-mini_2/'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     if not os.path.exists(diff_dir):
@@ -194,27 +197,75 @@ if __name__ == "__main__":  #MR added this to prevent an error
         # use yake if not otherwise specified
         keywords_class_0 = extract_keyword(caption_wrong_class_0)
         keywords_class_1 = extract_keyword(caption_wrong_class_1)
+    all_keywords = [keywords_class_0, keywords_class_1]
 
-    # calculate similarity
-    print("Start calculating scores..")
-    if args.number_val_images is not None:
-        print("Warning: If all images are classified correctly, then score calculation will throw an error")
-    similarity_wrong_class_0 = calc_similarity(image_dir, df_wrong_class_0['image'], keywords_class_0)
-    similarity_correct_class_0 = calc_similarity(image_dir, df_correct_class_0['image'], keywords_class_0)
-    similarity_wrong_class_1 = calc_similarity(image_dir, df_wrong_class_1['image'], keywords_class_1)
-    similarity_correct_class_1 = calc_similarity(image_dir, df_correct_class_1['image'], keywords_class_1)
+    if args.score == "vqa":
+        images_correct_0 = df_correct_class_0['image'].to_list()
+        img_paths_correct_0 = [image_dir + image for image in images_correct_0]
+        images_correct_1 = df_correct_class_1['image'].to_list()
+        img_paths_correct_1 = [image_dir + image for image in images_correct_1]
+        images_wrong_0 = df_wrong_class_0['image'].to_list()
+        img_paths_wrong_0 = [image_dir + image for image in images_wrong_0]
+        images_wrong_1 = df_wrong_class_1['image'].to_list()
+        img_paths_wrong_1 = [image_dir + image for image in images_wrong_1]
 
-    dist_class_0 = similarity_wrong_class_0 - similarity_correct_class_0
-    dist_class_1 = similarity_wrong_class_1 - similarity_correct_class_1
+        img_paths_correct = [img_paths_correct_0, img_paths_correct_1]
+        img_paths_wrong = [img_paths_wrong_0, img_paths_wrong_1]
 
-    print("Result for class :", class_names[0])
-    diff_0 = print_similarity(keywords_class_0, keywords_class_1, dist_class_0, dist_class_1, df_class_0)
-    print("*"*60)
-    print("Result for class :", class_names[1])
-    diff_1 = print_similarity(keywords_class_1, keywords_class_0, dist_class_1, dist_class_0, df_class_1)
+        correct_ratios_0, wrong_ratios_0, correct_keyword_occurrences_0, wrong_keyword_occurrences_0, total_correct_0, total_wrong_0 = calculate_vqs_score(img_paths_correct_0, img_paths_wrong_0, keywords_class_0)
+        correct_ratios_1, wrong_ratios_1, correct_keyword_occurrences_1, wrong_keyword_occurrences_1, total_correct_1, total_wrong_1 = calculate_vqs_score(img_paths_correct_1, img_paths_wrong_1, keywords_class_1)
 
-    if args.save_result:
-        diff_path_0 = diff_dir + args.dataset +"_" +  args.model.split(".")[0] + "_" +  class_names[0] + ".csv"
-        diff_path_1 = diff_dir + args.dataset +"_" +  args.model.split(".")[0] + "_" +  class_names[1] + ".csv"
-        diff_0.to_csv(diff_path_0)
-        diff_1.to_csv(diff_path_1)
+        if args.save_result:
+            # Organize the data into a dictionary or a DataFrame
+            data = {
+                'Metric': [
+                    'correct_ratios', 'wrong_ratios',
+                    'correct_keyword_occurrences', 'wrong_keyword_occurrences',
+                    'total_correct', 'total_wrong'
+                ],
+                'Class_0': [
+                    correct_ratios_0, wrong_ratios_0,
+                    correct_keyword_occurrences_0, wrong_keyword_occurrences_0,
+                    total_correct_0, total_wrong_0
+                ],
+                'Class_1': [
+                    correct_ratios_1, wrong_ratios_1,
+                    correct_keyword_occurrences_1, wrong_keyword_occurrences_1,
+                    total_correct_1, total_wrong_1
+                ]
+            }
+
+            # Convert to a pandas DataFrame
+            df_result = pd.DataFrame(data)
+
+            # Save the DataFrame to a CSV file
+            output_file = 'vqs_scores.csv'
+            output_path = os.path.join(result_dir, output_file)
+            df_result.to_csv(output_path, index=False)
+
+            print(f"Data saved to {output_file}")
+
+    else:  # if not otherwise specified use CLIP score from paper
+        # calculate similarity
+        print("Start calculating scores..")
+        if args.number_val_images is not None:
+            print("Warning: If all images are classified correctly, then score calculation will throw an error")
+        similarity_wrong_class_0 = calc_similarity(image_dir, df_wrong_class_0['image'], keywords_class_0)
+        similarity_correct_class_0 = calc_similarity(image_dir, df_correct_class_0['image'], keywords_class_0)
+        similarity_wrong_class_1 = calc_similarity(image_dir, df_wrong_class_1['image'], keywords_class_1)
+        similarity_correct_class_1 = calc_similarity(image_dir, df_correct_class_1['image'], keywords_class_1)
+
+        dist_class_0 = similarity_wrong_class_0 - similarity_correct_class_0
+        dist_class_1 = similarity_wrong_class_1 - similarity_correct_class_1
+
+        print("Result for class :", class_names[0])
+        diff_0 = print_similarity(keywords_class_0, keywords_class_1, dist_class_0, dist_class_1, df_class_0)
+        print("*"*60)
+        print("Result for class :", class_names[1])
+        diff_1 = print_similarity(keywords_class_1, keywords_class_0, dist_class_1, dist_class_0, df_class_1)
+
+        if args.save_result:
+            diff_path_0 = diff_dir + args.dataset +"_" +  args.model.split(".")[0] + "_" +  class_names[0] + ".csv"
+            diff_path_1 = diff_dir + args.dataset +"_" +  args.model.split(".")[0] + "_" +  class_names[1] + ".csv"
+            diff_0.to_csv(diff_path_0)
+            diff_1.to_csv(diff_path_1)

@@ -56,17 +56,17 @@ def extract_gpt_keywords(captions, prompt=default_prompt, model="gpt-4o-mini"):
         max_tokens=300,
     )
     response = chat_completion.choices[0].message.content
-    print(response)
+    #print(response)
     try:
         # Attempt to extract the list from the input string
         result = extract_list_from_string(response)
-        print("Extracted list:", result)
+        #print("Extracted list:", result)
         return result
     except ValueError as e:
         # Handle the case where no valid list is found
         print("Error:", e)
-        return None
+        return []
     except Exception as e:
         # Handle any other unexpected errors
         print("Unexpected error:", e)
-        return None
+        return []

@@ -130,11 +130,21 @@ if __name__ == "__main__":
 
     # manually limit to n images to reduce costs -> n images per class and correct/wrong prediction
     n = 2
-    df_images_correct = [df_correct_class_0['image'].to_list()[:n], df_correct_class_1['image'].to_list()[:n]]
-    df_images_wrong = [df_wrong_class_0['image'].to_list()[:n], df_wrong_class_1['image'].to_list()[:n]]
+    n_images_correct_0 = df_correct_class_0['image'].to_list()[:n]
+    img_paths_correct_0 = [image_dir + image for image in n_images_correct_0]
+    n_images_correct_1 = df_correct_class_1['image'].to_list()[:n]
+    img_paths_correct_1 = [image_dir + image for image in n_images_correct_1]
+    n_images_wrong_0 = df_wrong_class_0['image'].to_list()[:n]
+    img_paths_wrong_0 = [image_dir + image for image in n_images_wrong_0]
+    n_images_wrong_1 = df_wrong_class_1['image'].to_list()[:n]
+    img_paths_wrong_1 = [image_dir + image for image in n_images_wrong_1]
 
-    for name, corr_images, wrong_images, keywords in zip(class_names, df_images_correct, df_images_wrong, all_keywords):
-        correct_ratios, wrong_ratios = calculate_vqs_score(image_dir, corr_images, wrong_images, keywords)
+    img_paths_correct = [img_paths_correct_0, img_paths_correct_1]
+    img_paths_wrong = [img_paths_wrong_0, img_paths_wrong_1]
+    print("img_paths_correct:\n", img_paths_correct)
+
+    for name, corr_images, wrong_images, keywords in zip(class_names, img_paths_correct, img_paths_wrong, all_keywords):
+        correct_ratios, wrong_ratios = calculate_vqs_score(corr_images, wrong_images, keywords)
 
         print(f"Correct Ratios of {name}: {correct_ratios}")
         print(f"Wrong Ratios of {name}: {wrong_ratios}")
