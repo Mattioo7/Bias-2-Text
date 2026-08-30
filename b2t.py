@@ -18,7 +18,7 @@ from function.extract_keyword import extract_keyword
 from function.gpt_keywords import extract_gpt_keywords
 from function.calculate_similarity import calc_similarity
 from function.print_similarity import print_similarity
-from function.vqa_score import calculate_vqs_score
+from function.vqa_score import calculate_vqa_score
 
 from tqdm import tqdm
 import os
@@ -64,7 +64,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
         class_names = ['landbird', 'waterbird']
         # group_names = ['landbird_land', 'landbird_water', 'waterbird_land', 'waterbird_water']
         image_dir = 'data/cub/data/waterbird_complete95_forest2water2/'
-        caption_dir = 'data/cub/caption_gpt-4o-mini/'  # 'data/cub/caption_gpt-4o-mini/'
+        caption_dir = 'data/cub/caption/'  # 'data/cub/caption_gpt-4o-mini/'
         if not os.path.exists(caption_dir):
             os.makedirs(caption_dir)
             print(f"Directory '{caption_dir}' created.")
@@ -98,9 +98,9 @@ if __name__ == "__main__":  #MR added this to prevent an error
 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
 
-    result_dir = 'result_vqa_full_gpt/'  # 'result_gpt-4o-mini_2/'
+    result_dir = 'result_vqa_baseline/'  # 'result_gpt-4o-mini_2/'
     model_dir = 'model/'
-    diff_dir = 'diff_vqa_full_gpt/'  # 'diff_gpt-4o-mini_2/'
+    diff_dir = 'diff_vqa_baseline/'  # 'diff_gpt-4o-mini_2/'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     if not os.path.exists(diff_dir):
@@ -212,8 +212,10 @@ if __name__ == "__main__":  #MR added this to prevent an error
         img_paths_correct = [img_paths_correct_0, img_paths_correct_1]
         img_paths_wrong = [img_paths_wrong_0, img_paths_wrong_1]
 
-        correct_ratios_0, wrong_ratios_0, correct_keyword_occurrences_0, wrong_keyword_occurrences_0, total_correct_0, total_wrong_0 = calculate_vqs_score(img_paths_correct_0, img_paths_wrong_0, keywords_class_0)
-        correct_ratios_1, wrong_ratios_1, correct_keyword_occurrences_1, wrong_keyword_occurrences_1, total_correct_1, total_wrong_1 = calculate_vqs_score(img_paths_correct_1, img_paths_wrong_1, keywords_class_1)
+        print("Calculate VQA score for class 0")
+        correct_ratios_0, wrong_ratios_0, correct_keyword_occurrences_0, wrong_keyword_occurrences_0, total_correct_0, total_wrong_0 = calculate_vqa_score(img_paths_correct_0, img_paths_wrong_0, keywords_class_0)
+        print("Calculate VQA score for class 0")
+        correct_ratios_1, wrong_ratios_1, correct_keyword_occurrences_1, wrong_keyword_occurrences_1, total_correct_1, total_wrong_1 = calculate_vqa_score(img_paths_correct_1, img_paths_wrong_1, keywords_class_1)
 
         if args.save_result:
             # Organize the data into a dictionary or a DataFrame
@@ -239,7 +241,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
             df_result = pd.DataFrame(data)
 
             # Save the DataFrame to a CSV file
-            output_file = 'vqs_scores.csv'
+            output_file = 'vqa_scores.csv'
             output_path = os.path.join(result_dir, output_file)
             df_result.to_csv(output_path, index=False)
 
