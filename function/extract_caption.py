@@ -15,6 +15,7 @@ import skimage.io as io
 from PIL import Image
 
 from function.gpt_captioning import generate_gpt_caption
+from function.llava_next_captioning import generate_llava_next_caption
 
 N = type(None)
 V = np.array
@@ -260,6 +261,9 @@ caption_model = caption_model.to(clip_device)
 def extract_caption(image_path, model):
     if "gpt" in model:
         caption = generate_gpt_caption(image_path)
+    elif "llava-next" in model:
+        print("Using llava-next for captioning")
+        caption = generate_llava_next_caption(image_path)
         return caption
     else:
         # Use clipcap if not otherwise specified
