@@ -11,13 +11,11 @@ __pycache__/
 # Data
 data/celebA/
 data/cub/
-/data/waterbird_complete95_forest2water2/
 *.tar.gz
 
 # Model artifacts
 model/*
 function/clipcap.pt
-function/conceptual_weights.pt
 
 # Outputs
 result/
