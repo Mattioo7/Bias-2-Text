@@ -1,3 +1,9 @@
+# DEPRECATED: this project now uses `uv` + `pyproject.toml`/`uv.lock` for
+# environment management (see README.md's Installation section). This
+# Pipfile is kept only so branches/checkouts that haven't migrated yet still
+# have a working environment definition. Remove once all branches (notably
+# `llava-next`) are rebased onto the uv setup.
+
 [[source]]
 url = "https://pypi.org/simple"
 verify_ssl = true

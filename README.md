@@ -23,12 +23,15 @@ Clone our repository.
 $ git clone https://github.com/Erena-Kim/b2t.git
 ```
 
-Run below to create virtual environment for ```b2t```  and install all prerequisites.
+Run below to create a virtual environment for ```b2t``` and install all prerequisites, using [uv](https://docs.astral.sh/uv/).
 ```bash
-$ pip install pipenv
-$ pipenv --python 3.8
-$ pipenv install
+$ uv sync
 ```
+This provisions Python 3.11 automatically (independent of any system Python) and installs a CUDA build of PyTorch. If you're not on Windows/Linux with an NVIDIA GPU matching the CUDA index pinned in `pyproject.toml`, adjust the `[[tool.uv.index]]` URL there first (see the comment above it).
+
+Run commands inside the environment with `uv run`, e.g. `uv run python b2t.py --dataset celeba --model best_model_CelebA_erm.pth`.
+
+<sub>The project previously used Pipenv (`Pipfile`/`Pipfile.lock`); those files are kept temporarily for branches not yet migrated to uv, but `pyproject.toml`/`uv.lock` are now the source of truth.</sub>
 
 To run our code, you need to place datasets and model checkpoints to right directory.  
 You can download the ClipCap pretrained model [here](https://github.com/rmokady/CLIP_prefix_caption) and place the model to ```[root_dir]/function```. (Note that our paper uses the model that trained on Conceptual Captions)  

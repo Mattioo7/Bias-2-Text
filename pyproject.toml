@@ -1,0 +1,51 @@
+[project]
+name = "b2t"
+version = "0.1.0"
+description = "Bias-to-Text (B2T): Visual Biases as Keywords"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "accelerate>=1.14.0",
+    "bitsandbytes>=0.50.2",
+    "clip",
+    "diffusers<0.22",  # semdiffusers imports the removed `diffusers.pipeline_utils` module (gone since 0.22)
+    "ftfy>=6.3.1",
+    "huggingface-hub>=0.23.2,<0.26",  # diffusers 0.21.4 uses huggingface_hub.cached_download, removed in 0.26
+    "numpy>=2.4.6",
+    "openai>=3.7.0",
+    "pandas>=3.0.5",
+    "pillow>=12.3.0",
+    "python-dotenv>=1.2.3",
+    "regex>=2026.9.3",
+    "scikit-image>=0.26.0",
+    "scikit-learn>=1.9.0",
+    "semdiffusers>=1.0.0",
+    "tabulate>=0.10.0",
+    "tensorboard>=2.21.0",
+    "torch>=2.14.0",
+    "torchaudio>=2.11.0",
+    "torchvision>=0.29.0",
+    "tqdm>=4.70.0",
+    "transformers>=4.39,<4.49",  # >=4.39 for LlavaNext, <4.49 to stay on huggingface-hub<0.26 (see above)
+    "yake>=0.7.3",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv]
+# semdiffusers pins Pillow<10.0 in its requirements.txt; we force our newer
+# pillow (needed by scikit-image/torchvision) across the whole resolution.
+override-dependencies = ["pillow>=12.3.0"]
+
+[tool.uv.extra-build-dependencies]
+clip = ["setuptools<81"]
+semdiffusers = ["setuptools<81"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu" }]
+torchvision = [{ index = "pytorch-cu" }]
+torchaudio = [{ index = "pytorch-cu" }]
+clip = { git = "https://github.com/openai/CLIP.git", rev = "3702849800aa56e2223035bccd1c6ef91c704ca8" }
+semdiffusers = { git = "https://github.com/ml-research/semantic-image-editing.git", rev = "d284e44077cc6d94389693e1db6b1e5495f9e0b8" }
