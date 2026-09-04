@@ -18,5 +18,4 @@ model/*
 function/clipcap.pt
 
 # Outputs
-result/
 diff/
