@@ -7,7 +7,7 @@ import pandas as pd
 from data.waterbirds import Waterbirds, get_transform_cub
 from function.gpt_keywords import extract_gpt_keywords
 from function.extract_keyword import extract_keyword
-from function.vqa_score import calculate_vqs_score
+from function.vqa_score import calculate_vqa_score # typo vsq
 
 
 if __name__ == "__main__":
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # correctify dataset
     result_path = result_dir + dataset + "_" + model.split(".")[0] + ".csv"
     if not os.path.exists(result_path):
-        model = torch.load(model_dir + model)
+        model = torch.load(model_dir + model, weights_only=False)
         model = model.to(device)
         model.eval()
         start_time = time.time()
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     print("img_paths_correct:\n", img_paths_correct)
 
     for name, corr_images, wrong_images, keywords in zip(class_names, img_paths_correct, img_paths_wrong, all_keywords):
-        correct_ratios, wrong_ratios = calculate_vqs_score(corr_images, wrong_images, keywords)
+        correct_ratios, wrong_ratios = calculate_vqa_score(corr_images, wrong_images, keywords)
 
         print(f"Correct Ratios of {name}: {correct_ratios}")
         print(f"Wrong Ratios of {name}: {wrong_ratios}")

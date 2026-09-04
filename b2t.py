@@ -98,9 +98,9 @@ if __name__ == "__main__":  #MR added this to prevent an error
 
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
 
-    result_dir = 'result_vqa_baseline/'  # 'result_gpt-4o-mini_2/'
+    result_dir = 'result/'  # 'result_vqa_baseline/', 'result_gpt-4o-mini_2/'
     model_dir = 'model/'
-    diff_dir = 'diff_vqa_baseline/'  # 'diff_gpt-4o-mini_2/'
+    diff_dir = 'diff/'  # 'diff_vqa_baseline/', 'diff_gpt-4o-mini_2/'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     if not os.path.exists(diff_dir):
@@ -122,7 +122,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
     # correctify dataset
     result_path = result_dir + args.dataset +"_" +  args.model.split(".")[0] + ".csv"
     if not os.path.exists(result_path):
-        model = torch.load(model_dir + args.model)
+        model = torch.load(model_dir + args.model, weights_only=False)
         model = model.to(device)
         model.eval()
         start_time = time.time()
