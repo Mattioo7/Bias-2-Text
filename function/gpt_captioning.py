@@ -20,15 +20,22 @@ default_prompt_4 = ("Generate a caption to the given image that is descriptive a
                     "Please respond only with the caption!")
 
 
-# Load the .env file and initialize the api endpoint
-# Get the absolute path of the .env file
-current_script_dir = os.path.dirname(os.path.abspath(__file__))
-env_path = os.path.join(current_script_dir, "..", ".env")
-load_dotenv(dotenv_path=env_path)
-api_key = os.getenv("OPENAI_API_KEY")  # load api_key from .env file
-if not api_key:
-    raise ValueError("OPENAI_API_KEY is not set in the .env file")
-client = OpenAI(api_key=api_key)
+_client = None
+
+
+def _get_client():
+    # Lazy init: only touches OPENAI_API_KEY when a gpt-* option is actually used,
+    # so importing this module doesn't require a key.
+    global _client
+    if _client is None:
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        env_path = os.path.join(current_script_dir, "..", ".env")
+        load_dotenv(dotenv_path=env_path)
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY is not set in the .env file")
+        _client = OpenAI(api_key=api_key)
+    return _client
 
 
 def encode_image(image_path):
@@ -62,7 +69,7 @@ def construct_message(prompt, image_path):
 
 def generate_gpt_caption(img_path, prompt=default_prompt_2, model="gpt-4o-mini"):
     message = construct_message(prompt, img_path)
-    chat_completion = client.chat.completions.create(
+    chat_completion = _get_client().chat.completions.create(
         messages=message,
         model=model,
         max_tokens=300,

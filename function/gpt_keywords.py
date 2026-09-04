@@ -9,15 +9,22 @@ default_prompt = ("Analyse the following captions which belong to misclassified 
                   "Please respond only with the 10 to 20 bias keywords in a python list!")
 
 
-# Load the .env file and initialize the api endpoint
-# Get the absolute path of the .env file
-current_script_dir = os.path.dirname(os.path.abspath(__file__))
-env_path = os.path.join(current_script_dir, "..", ".env")
-load_dotenv(dotenv_path=env_path)
-api_key = os.getenv("OPENAI_API_KEY")  # load api_key from .env file
-if not api_key:
-    raise ValueError("OPENAI_API_KEY is not set in the .env file")
-client = OpenAI(api_key=api_key)
+_client = None
+
+
+def _get_client():
+    # Lazy init: only touches OPENAI_API_KEY when a gpt-* option is actually used,
+    # so importing this module doesn't require a key.
+    global _client
+    if _client is None:
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        env_path = os.path.join(current_script_dir, "..", ".env")
+        load_dotenv(dotenv_path=env_path)
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY is not set in the .env file")
+        _client = OpenAI(api_key=api_key)
+    return _client
 
 
 def construct_message(prompt, captions):
@@ -50,7 +57,7 @@ def extract_list_from_string(input_string):
 
 def extract_gpt_keywords(captions, prompt=default_prompt, model="gpt-4o-mini"):
     message = construct_message(prompt, captions)
-    chat_completion = client.chat.completions.create(
+    chat_completion = _get_client().chat.completions.create(
         messages=message,
         model=model,
         max_tokens=300,
