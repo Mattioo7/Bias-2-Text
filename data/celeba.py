@@ -13,8 +13,14 @@ from PIL import Image
 
 
 class CelebA(Dataset):
-    def __init__(self, data_dir='/data/celebA', split='train', transform=None):
+    def __init__(self, data_dir='data/celeba', split='train', transform=None,
+                 variant='img_align_celeba'):
+        # `variant` selects the image folder under data_dir: 'img_align_celeba'
+        # (aligned 178x218 crops, what the pretrained checkpoints expect) or
+        # 'img_celeba' (raw in-the-wild originals). Both hold their images in a
+        # nested 'data' folder and share the annotation CSVs in data_dir.
         self.data_dir = data_dir
+        self.variant = variant
         self.split = split
         self.split_dict = {'train': 0, 'val': 1, 'test': 2}
 
@@ -24,8 +30,10 @@ class CelebA(Dataset):
         self.metadata_df = self.metadata_df[self.split_df['partition'] == self.split_dict[self.split]]
 
         # Get the y values
-        self.y_array = self.metadata_df['Blond_Hair'].values
-        self.confounder_array = self.metadata_df['Male'].values
+        # .copy(): pandas hands back a read-only view, and the -1 -> 0 remap below
+        # writes in place.
+        self.y_array = self.metadata_df['Blond_Hair'].values.copy()
+        self.confounder_array = self.metadata_df['Male'].values.copy()
         self.y_array[self.y_array == -1] = 0
         self.confounder_array[self.confounder_array == -1] = 0
         self.group_array = (self.y_array * 2 + self.confounder_array).astype('int')
@@ -50,7 +58,7 @@ class CelebA(Dataset):
         return len(self.filename_array)
 
     def __getitem__(self, idx):
-        img_filename = os.path.join(self.data_dir, 'img_align_celeba', self.filename_array[idx])
+        img_filename = os.path.join(self.data_dir, self.variant, 'data', self.filename_array[idx])
         img = Image.open(img_filename).convert('RGB')
         x = self.transform(img)
 

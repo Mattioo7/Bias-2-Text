@@ -2,6 +2,12 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 #MR to prevent an OpenMP error
 
+# CLIP ships its checkpoints as TorchScript modules, so clip.load() goes through
+# the deprecated torch.jit.load. Filtered here, before any import that loads CLIP.
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning,
+                        message=r"`torch\.jit\.load` is deprecated")
+
 import numpy as np
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Subset
@@ -37,6 +43,8 @@ all_captioning_models = ["clipcap", "multicap", "gpt-4o", "gpt-4o-mini"]
 all_keyword_extraction_models = ["yake", "gpt-4o", "gpt-4o-mini"]
 all_datasets = ['waterbird', 'celeba']
 all_scores = ['clip', 'vqa']
+# CelebA ships two image sets under data/celeba/; both share the annotation CSVs.
+celeba_variant_dirs = {'align': 'img_align_celeba', 'raw': 'img_celeba'}
 
 def parse_args():
     parser = argparse.ArgumentParser()    
@@ -47,6 +55,8 @@ def parse_args():
     parser.add_argument("--score", type=str, default='clip', choices=all_scores)
     parser.add_argument("--number_val_images", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
     parser.add_argument("--no_extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
+    parser.add_argument("--celeba_variant", type=str, default='align', choices=list(celeba_variant_dirs),
+                        help="Which CelebA image set to use: 'align' (178x218 crops, matches the pretrained checkpoints) or 'raw' (in-the-wild originals). Ignored for waterbird.")
     parser.add_argument("--save_result", default = True)
     args = parser.parse_args()
     return args
@@ -80,14 +90,20 @@ if __name__ == "__main__":  #MR added this to prevent an error
         preprocess = get_transform_celeba()
         class_names = ['not blond', 'blond']
         # group_names = ['not blond_female', 'not blond_male', 'blond_female', 'blond_male']
-        image_dir = 'data/celebA/data/img_align_celeba/'
-        caption_dir = 'data/celebA/caption/'  # 'data/celebA/caption_gpt-4o-mini/'
+        variant_dir = celeba_variant_dirs[args.celeba_variant]
+        if args.celeba_variant == 'raw':
+            print("WARNING: get_transform_celeba() center-crops to 178px, which only makes sense for the "
+                  "aligned images. The pretrained checkpoints were trained on those, so results on 'raw' "
+                  "are not comparable to the paper.")
+        image_dir = f'data/celeba/{variant_dir}/data/'
+        # Captions differ per variant, so keep them apart.
+        caption_dir = f'data/celeba/caption_{args.celeba_variant}/'  # 'data/celeba/caption_gpt-4o-mini/'
         if not os.path.exists(caption_dir):
             os.makedirs(caption_dir)
             print(f"Directory '{caption_dir}' created.")
         else:
             print(f"Directory '{caption_dir}' already exists. Writing content into or reading content from this director")
-        val_dataset = CelebA(data_dir='data/celebA/data/', split='val', transform=preprocess)
+        val_dataset = CelebA(data_dir='data/celeba', split='val', transform=preprocess, variant=variant_dir)
         if args.number_val_images is not None:
             # ensure that the given number is not too large
             num_imgs = min(args.number_val_images, len(val_dataset))
