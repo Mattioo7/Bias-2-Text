@@ -42,7 +42,7 @@ Uruchom raz, przed pierwszym `b2t.py --dataset celeba`.
 
 ## 2. `b2t.py` — główny pipeline B2T
 
-Kroki: generowanie opisów obrazów → klasyfikacja zbioru walidacyjnego → wyciąganie słów kluczowych z opisów źle sklasyfikowanych obrazów → liczenie score (CLIP albo VQA).
+Kroki: klasyfikacja zbioru walidacyjnego (cache) → generowanie opisów obrazów potrzebnych do score (wszystkie przy CLIP, tylko źle sklasyfikowane przy VQA) → wyciąganie słów kluczowych z opisów źle sklasyfikowanych obrazów → liczenie score (CLIP albo VQA).
 
 ### Argumenty
 
@@ -63,8 +63,10 @@ Kroki: generowanie opisów obrazów → klasyfikacja zbioru walidacyjnego → wy
 | Plik | Zawartość |
 |---|---|
 | `data/cub/caption/*.txt`, `data/celeba/caption_<variant>/*.txt` | Opisy obrazów |
-| `result/<dataset>_<model>.csv` | Predykcje klasyfikatora i opisy (cache) |
-| `diff/<dataset>_<model>_<klasa>.csv` | Słowa kluczowe i CLIP score (`--score clip`) |
+| `result/<tag>.csv` | Predykcje klasyfikatora, bez opisów (cache) |
+| `diff/<tag>_<klasa>.csv` | Słowa kluczowe i CLIP score (`--score clip`) |
+
+`<tag>` = `<dataset>[_<celeba_variant>]_<model>[_n<number_val_images>]`, np. `waterbird_best_model_Waterbirds_erm`, `celeba_align_best_model_CelebA_erm_n100`. Wariant pojawia się tylko dla CelebA, `_n...` tylko przy `--number_val_images`.
 | `result/vqa_scores.csv` | Surowe statystyki VQA (`--score vqa`) |
 
 ### Przykłady
@@ -131,7 +133,7 @@ uv run python b2t.py --help
 
 ### Uwagi
 
-- **Cache predykcji:** jeśli `result/<dataset>_<model>.csv` już istnieje, klasyfikacja jest pomijana i opisy są brane z tego pliku, a nie z nowo wygenerowanych `.txt`. Po zmianie `--captioning_model`, `--celeba_variant` albo `--number_val_images` usuń ten plik, inaczej zostaną użyte stare opisy.
+- **Cache predykcji:** jeśli `result/<tag>.csv` już istnieje i ma tyle wierszy, ile obrazów w zbiorze, klasyfikacja jest pomijana. Plik zawiera tylko predykcje, więc zmiana `--captioning_model`, `--keyword_extraction_model` albo `--score` go nie unieważnia. Opisy są zawsze czytane z plików `.txt`. Po podmianie checkpointu o tej samej nazwie usuń plik ręcznie.
 - **`--save_result`** jest parsowany jako tekst, więc `--save_result False` nadal zapisuje wyniki (każdy niepusty napis jest prawdziwy). Nie da się tego wyłączyć z linii poleceń.
 - **`gpt-4o` vs `gpt-4o-mini`:** obecnie w obu przypadkach używany jest `gpt-4o-mini` (to domyślna wartość w `function/gpt_captioning.py` i `function/gpt_keywords.py`, a nazwa modelu nie jest tam przekazywana).
 - **`--score vqa`** zapisuje zawsze do `result/vqa_scores.csv`, nadpisując poprzedni plik. Wyniki w `result_vqa_*` były przenoszone ręcznie.

@@ -1,8 +1,8 @@
 """
 B2T (Bias-to-Text) pipeline:
     1. Load the validation dataset
-    2. Extract a caption for every image
-    3. Classify the images with the pretrained model (cached in result/)
+    2. Classify the images with the pretrained model (cached in result/, independent of captions)
+    3. Extract captions for the images the score needs (all for CLIP, misclassified for VQA)
     4. Extract keywords from captions of misclassified images, per class
     5. Score the keywords (CLIP score from the paper, or VQA score) and save them
 """
@@ -136,26 +136,21 @@ def load_dataset(args):
 
 
 # ---------------------------------------------------------------------------
-# Step 2: captions
+# Step 2: predictions
 # ---------------------------------------------------------------------------
-def caption_path_for(caption_dir, image):
-    return caption_dir + image.split("/")[-1][:-4] + ".txt"
+def run_tag(args):
+    """Identifies everything the predictions depend on: dataset, image variant, model and image subset."""
+    tag = args.dataset
+    if args.dataset == 'celeba':
+        tag += "_" + args.celeba_variant
+    tag += "_" + args.model.split(".")[0]
+    if args.number_val_images is not None:
+        tag += f"_n{args.number_val_images}"
+    return tag
 
 
-def extract_captions(val_dataset, image_dir, caption_dir, captioning_model):
-    """Writes one caption .txt per image into caption_dir."""
-    for x, (y, y_group, y_spurious), idx, path in tqdm(val_dataset):
-        caption = extract_caption(image_dir + path, captioning_model)
-        with open(caption_path_for(caption_dir, path), 'w') as f:
-            f.write(caption)
-    print("Captions of {} images extracted".format(len(val_dataset)))
-
-
-# ---------------------------------------------------------------------------
-# Step 3: classification
-# ---------------------------------------------------------------------------
-def classify(val_dataset, caption_dir, model_name, device):
-    """Runs the classifier and joins its predictions with the captions."""
+def classify(val_dataset, model_name, device):
+    """Runs the classifier. Returns one row per image, without captions."""
     val_dataloader = DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
 
     model = torch.load(model_dir + model_name, weights_only=False)
@@ -169,35 +164,76 @@ def classify(val_dataset, caption_dir, model_name, device):
             "group":[],
             "spurious":[],
             "correct":[],
-            "caption":[],
             }
 
     with torch.no_grad():
-        running_corrects = 0
         for (images, (targets, targets_g, targets_s), index, paths) in tqdm(val_dataloader):
             images = images.to(device)
             targets = targets.to(device)
             outputs = model(images)
             _, preds = torch.max(outputs, 1)
             for i in range(len(preds)):
-                with open(caption_path_for(caption_dir, paths[i]), "r") as f:
-                    caption = f.readline()
-                correct = int(preds[i] == targets[i])
-                running_corrects += correct
                 result['image'].append(paths[i])
                 result['pred'].append(preds[i].item())
                 result['actual'].append(targets[i].item())
                 result['group'].append(targets_g[i].item())
                 result['spurious'].append(targets_s[i].item())
-                result['caption'].append(caption)
-                result['correct'].append(correct)
-
-    print("# of correct examples : ", running_corrects)
-    print("# of wrong examples : ", len(val_dataset) - running_corrects)
-    print("# of all examples : ", len(val_dataset))
-    print("Accuracy : {:.2f} %".format(running_corrects/len(val_dataset)*100))
+                result['correct'].append(int(preds[i] == targets[i]))
 
     return pd.DataFrame(result)
+
+
+def load_or_classify(val_dataset, predictions_path, model_name, device):
+    """Predictions depend only on the model and the images, so they are computed once and cached."""
+    if os.path.exists(predictions_path):
+        df = pd.read_csv(predictions_path)
+        # Caches written before the reordering also held captions and the pandas index.
+        df = df.drop(columns=[c for c in ("caption", "Unnamed: 0") if c in df.columns])
+        if len(df) == len(val_dataset):
+            print("Predictions \"{}\" loaded".format(predictions_path))
+            return df
+        print(f"Predictions \"{predictions_path}\" have {len(df)} rows but the dataset has "
+              f"{len(val_dataset)} images. Classifying again.")
+
+    df = classify(val_dataset, model_name, device)
+    df.to_csv(predictions_path, index=False)
+    print("Predictions stored in \"{}\"".format(predictions_path))
+    return df
+
+
+def print_accuracy(df):
+    running_corrects = int(df['correct'].sum())
+    print("# of correct examples : ", running_corrects)
+    print("# of wrong examples : ", len(df) - running_corrects)
+    print("# of all examples : ", len(df))
+    print("Accuracy : {:.2f} %".format(running_corrects/len(df)*100))
+
+
+# ---------------------------------------------------------------------------
+# Step 3: captions
+# ---------------------------------------------------------------------------
+def caption_path_for(caption_dir, image):
+    return caption_dir + image.split("/")[-1][:-4] + ".txt"
+
+
+def extract_captions(images, image_dir, caption_dir, captioning_model):
+    """Writes one caption .txt per image into caption_dir."""
+    for image in tqdm(images):
+        caption = extract_caption(image_dir + image, captioning_model)
+        with open(caption_path_for(caption_dir, image), 'w') as f:
+            f.write(caption)
+    print("Captions of {} images extracted".format(len(images)))
+
+
+def read_captions(images, caption_dir):
+    captions = []
+    for image in images:
+        path = caption_path_for(caption_dir, image)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Caption '{path}' is missing. Run without --no_extract_caption.")
+        with open(path, "r") as f:
+            captions.append(f.readline())
+    return captions
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +297,7 @@ def clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, key
     if args.save_result:
         print()
         for c in (0, 1):
-            diff_path = diff_dir + args.dataset + "_" + args.model.split(".")[0] + "_" + class_names[c] + ".csv"
+            diff_path = diff_dir + run_tag(args) + "_" + class_names[c] + ".csv"
             diffs[c].to_csv(diff_path)
             print(f"Data saved to {diff_path}")
 
@@ -278,22 +314,21 @@ if __name__ == "__main__":  #MR added this to prevent an error
     print_step("STEP 1/5: Load dataset")
     val_dataset, class_names, image_dir, caption_dir = load_dataset(args)
 
-    print_step("STEP 2/5: Extract captions")
+    print_step("STEP 2/5: Classify images")
+    df = load_or_classify(val_dataset, result_dir + run_tag(args) + ".csv", args.model, device)
+    print_accuracy(df)
+
+    print_step("STEP 3/5: Extract captions")
+    # Keywords come from misclassified images only. The CLIP score also looks the keywords up
+    # in the captions of the correctly classified images (Acc. column), VQA does not.
+    needs_caption = df['correct'] == 0 if args.score == "vqa" else pd.Series(True, index=df.index)
+    images_to_caption = df.loc[needs_caption, 'image'].tolist()
+    print(f"Captions needed for {len(images_to_caption)} of {len(df)} images ({args.score.upper()} score)")
     if args.no_extract_caption:
         print(f"Skipped (--no_extract_caption), reading captions from '{caption_dir}'")
     else:
-        extract_captions(val_dataset, image_dir, caption_dir, args.captioning_model)
-
-    print_step("STEP 3/5: Classify images")
-    result_path = result_dir + args.dataset + "_" + args.model.split(".")[0] + ".csv"
-    if os.path.exists(result_path):
-        # Cached predictions also contain the captions, so new caption .txt files are ignored.
-        df = pd.read_csv(result_path)
-        print("Classified result \"{}\" loaded".format(result_path))
-    else:
-        df = classify(val_dataset, caption_dir, args.model, device)
-        df.to_csv(result_path)
-        print("Classified result stored")
+        extract_captions(images_to_caption, image_dir, caption_dir, args.captioning_model)
+    df.loc[needs_caption, 'caption'] = read_captions(images_to_caption, caption_dir)
 
     # Split into class 0 (landbird / not blond) and class 1 (waterbird / blond)
     df_class = {c: df[df['actual'] == c] for c in (0, 1)}
