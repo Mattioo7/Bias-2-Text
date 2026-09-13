@@ -69,6 +69,11 @@ if __name__ == "__main__":  #MR added this to prevent an error
     # load dataset
     args = parse_args()
 
+    print("-" * 20 + " CONFIG " + "-" * 20)
+    for name, value in vars(args).items():
+        print(f"{name:<26} {value}")
+    print("-" * 48)
+
     if args.dataset == 'waterbird':
         preprocess = get_transform_cub()
         class_names = ['landbird', 'waterbird']
