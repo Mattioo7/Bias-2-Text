@@ -53,6 +53,7 @@ all_captioning_models = ["clipcap", "multicap", "gpt-4o", "gpt-4o-mini"]
 all_keyword_extraction_models = ["yake", "gpt-4o", "gpt-4o-mini"]
 all_datasets = ['waterbird', 'celeba']
 all_scores = ['clip', 'vqa']
+all_vqa_models = ['gpt-4o', 'gpt-4o-mini', 'random']
 # CelebA ships two image sets under data/celeba/; both share the annotation CSVs.
 celeba_variant_dirs = {'align': 'img_align_celeba', 'raw': 'img_celeba'}
 
@@ -68,6 +69,8 @@ def parse_args():
     parser.add_argument("--captioning_model", type=str, default='clipcap', choices=all_captioning_models)
     parser.add_argument("--keyword_extraction_model", type=str, default='yake', choices=all_keyword_extraction_models)
     parser.add_argument("--score", type=str, default='clip', choices=all_scores)
+    parser.add_argument("--vqa_model", type=str, default='gpt-4o-mini', choices=all_vqa_models,
+                        help="Model answering which keywords are visible in an image (only with --score vqa). 'random' answers 0/1 at random, without the API.")
     parser.add_argument("--number_val_images", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
     parser.add_argument("--no_extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
     parser.add_argument("--celeba_variant", type=str, default='align', choices=list(celeba_variant_dirs),
@@ -252,13 +255,13 @@ def extract_keywords(df_wrong_class, keyword_extraction_model):
 # ---------------------------------------------------------------------------
 # Step 5: scores
 # ---------------------------------------------------------------------------
-def vqa_score(image_dir, df_correct, df_wrong, keywords, save_result):
+def vqa_score(image_dir, df_correct, df_wrong, keywords, vqa_model, save_result):
     stats = {}
     for c in (0, 1):
         print(f"\nCalculate VQA score for class {c}")
         img_paths_correct = [image_dir + image for image in df_correct[c]['image'].to_list()]
         img_paths_wrong = [image_dir + image for image in df_wrong[c]['image'].to_list()]
-        stats[c] = calculate_vqa_score(img_paths_correct, img_paths_wrong, keywords[c])
+        stats[c] = calculate_vqa_score(img_paths_correct, img_paths_wrong, keywords[c], model=vqa_model)
 
     if save_result:
         df_result = pd.DataFrame({
@@ -341,7 +344,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
 
     print_step(f"STEP 5/5: Calculate {args.score.upper()} score")
     if args.score == "vqa":
-        vqa_score(image_dir, df_correct, df_wrong, keywords, args.save_result)
+        vqa_score(image_dir, df_correct, df_wrong, keywords, args.vqa_model, args.save_result)
     else:  # if not otherwise specified use CLIP score from paper
         clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, keywords)
 

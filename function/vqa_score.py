@@ -21,7 +21,7 @@ _client = None
 
 
 def _get_client():
-    # Lazy init: only touches OPENAI_API_KEY when --score vqa is actually used,
+    # Lazy init: only touches OPENAI_API_KEY when a GPT VQA model is actually queried,
     # so importing this module doesn't require a key.
     global _client
     if _client is None:

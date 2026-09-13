@@ -15,7 +15,7 @@ Wymagane pliki (nie są w repo):
 
 | Co | Gdzie |
 |---|---|
-| Klucz OpenAI (tylko dla opcji `gpt-*` i `--score vqa`) | `.env` → `OPENAI_API_KEY=sk-...` |
+| Klucz OpenAI (tylko dla opcji `gpt-*`) | `.env` → `OPENAI_API_KEY=sk-...` |
 | Model ClipCap (Conceptual Captions) | `function/clipcap.pt` |
 | Checkpointy klasyfikatorów | `model/best_model_CelebA_erm.pth`, `model/best_model_CelebA_dro.pth`, `model/best_model_Waterbirds_erm.pth`, `model/best_model_Waterbirds_dro.pth` |
 | Waterbirds | `data/cub/data/waterbird_complete95_forest2water2/` |
@@ -52,7 +52,8 @@ Kroki: klasyfikacja zbioru walidacyjnego (cache) → generowanie opisów obrazó
 | `--model` | nazwa pliku z `model/` | `best_model_Waterbirds_erm.pth` | Checkpoint klasyfikatora |
 | `--captioning_model` | `clipcap`, `multicap`, `gpt-4o`, `gpt-4o-mini` | `clipcap` | Model do generowania opisów. `multicap` = ClipCap, 10 opisów sklejonych w jeden |
 | `--keyword_extraction_model` | `yake`, `gpt-4o`, `gpt-4o-mini` | `yake` | Ekstrakcja słów kluczowych |
-| `--score` | `clip`, `vqa` | `clip` | `clip` = score z artykułu, `vqa` = GPT odpowiada, czy słowo kluczowe widać na obrazie |
+| `--score` | `clip`, `vqa` | `clip` | `clip` = score z artykułu, `vqa` = model z `--vqa_model` odpowiada, czy słowo kluczowe widać na obrazie |
+| `--vqa_model` | `gpt-4o`, `gpt-4o-mini`, `random` | `gpt-4o-mini` | Model do score VQA (tylko przy `--score vqa`). `random` losuje 0/1 dla każdego słowa bez patrzenia na obraz: darmowy test pipeline'u i punkt odniesienia (różnica poprawne/błędne ≈ 0) |
 | `--number_val_images` | liczba całkowita | brak (wszystkie) | Ogranicza zbiór walidacyjny do pierwszych N obrazów (szybciej / taniej) |
 | `--no_extract_caption` | flaga | wyłączona | Pomija generowanie opisów i używa już zapisanych |
 | `--celeba_variant` | `align`, `raw` | `align` | Zestaw obrazów CelebA. `raw` nie pasuje do checkpointów, więc wyniki nie są porównywalne z artykułem. Dla waterbird ignorowane |
@@ -121,6 +122,11 @@ Score VQA zamiast CLIP (wymaga `OPENAI_API_KEY`, jedno zapytanie na obraz):
 uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --score vqa --number_val_images 50
 ```
 
+Test ścieżki VQA bez API i kosztów (losowe odpowiedzi):
+```bash
+uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --score vqa --vqa_model random --number_val_images 50
+```
+
 Pełny wariant GPT (opisy + słowa kluczowe + VQA):
 ```bash
 uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --captioning_model gpt-4o-mini --keyword_extraction_model gpt-4o-mini --score vqa
@@ -135,7 +141,6 @@ uv run python b2t.py --help
 
 - **Cache predykcji:** jeśli `result/<tag>.csv` już istnieje i ma tyle wierszy, ile obrazów w zbiorze, klasyfikacja jest pomijana. Plik zawiera tylko predykcje, więc zmiana `--captioning_model`, `--keyword_extraction_model` albo `--score` go nie unieważnia. Opisy są zawsze czytane z plików `.txt`. Po podmianie checkpointu o tej samej nazwie usuń plik ręcznie.
 - **`--save_result`** jest parsowany jako tekst, więc `--save_result False` nadal zapisuje wyniki (każdy niepusty napis jest prawdziwy). Nie da się tego wyłączyć z linii poleceń.
-- **`gpt-4o` vs `gpt-4o-mini`:** obecnie w obu przypadkach używany jest `gpt-4o-mini` (to domyślna wartość w `function/gpt_captioning.py` i `function/gpt_keywords.py`, a nazwa modelu nie jest tam przekazywana).
 - **`--score vqa`** zapisuje zawsze do `result/vqa_scores.csv`, nadpisując poprzedni plik. Wyniki w `result_vqa_*` były przenoszone ręcznie.
 - **`--number_val_images` + `--score clip`:** jeśli w którejś klasie wszystkie obrazy zostaną sklasyfikowane poprawnie, liczenie score rzuci błąd.
 

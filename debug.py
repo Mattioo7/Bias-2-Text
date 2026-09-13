@@ -117,8 +117,8 @@ if __name__ == "__main__":
 
     # extract keyword
     if "gpt" in keyword_extraction_model:
-        keywords_class_0 = extract_gpt_keywords(caption_wrong_class_0)
-        keywords_class_1 = extract_gpt_keywords(caption_wrong_class_1)
+        keywords_class_0 = extract_gpt_keywords(caption_wrong_class_0, model=keyword_extraction_model)
+        keywords_class_1 = extract_gpt_keywords(caption_wrong_class_1, model=keyword_extraction_model)
     else:
         # use yake if not otherwise specified
         keywords_class_0 = extract_keyword(caption_wrong_class_0)
