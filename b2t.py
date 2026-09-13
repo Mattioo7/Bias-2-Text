@@ -1,6 +1,24 @@
+"""
+B2T (Bias-to-Text) pipeline:
+    1. Load the validation dataset
+    2. Extract a caption for every image
+    3. Classify the images with the pretrained model (cached in result/)
+    4. Extract keywords from captions of misclassified images, per class
+    5. Score the keywords (CLIP score from the paper, or VQA score) and save them
+"""
+
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 #MR to prevent an OpenMP error
+
+# Started before the imports, so the total time includes loading the models.
+import time
+start_time = time.perf_counter()
+
+# Imports below load CLIP and ClipCap, which takes a while with no output.
+# DataLoader workers on Windows re-import this file as "__mp_main__", so they stay silent.
+if __name__ == "__main__":
+    print("B2T started. Loading libraries and models (CLIP, ClipCap)...\n", flush=True)
 
 # CLIP ships its checkpoints as TorchScript modules, so clip.load() goes through
 # the deprecated torch.jit.load. Filtered here, before any import that loads CLIP.
@@ -8,11 +26,16 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning,
                         message=r"`torch\.jit\.load` is deprecated")
 
-import numpy as np
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, Subset
+# ignore SourceChangeWarning when loading model
+from torch.serialization import SourceChangeWarning
+warnings.filterwarnings("ignore", category=SourceChangeWarning)
+
+import argparse
+
+import pandas as pd
 import torch
-import clip
+from torch.utils.data import DataLoader, Subset
+from tqdm import tqdm
 
 # for loading dataset
 from data.celeba import CelebA, get_transform_celeba
@@ -26,19 +49,6 @@ from function.calculate_similarity import calc_similarity
 from function.print_similarity import print_similarity
 from function.vqa_score import calculate_vqa_score
 
-from tqdm import tqdm
-import os
-import time
-import pandas as pd
-
-
-import argparse
-
-# ignore SourceChangeWarning when loading model
-import warnings
-from torch.serialization import SourceChangeWarning
-warnings.filterwarnings("ignore", category=SourceChangeWarning)
-
 all_captioning_models = ["clipcap", "multicap", "gpt-4o", "gpt-4o-mini"]
 all_keyword_extraction_models = ["yake", "gpt-4o", "gpt-4o-mini"]
 all_datasets = ['waterbird', 'celeba']
@@ -46,8 +56,13 @@ all_scores = ['clip', 'vqa']
 # CelebA ships two image sets under data/celeba/; both share the annotation CSVs.
 celeba_variant_dirs = {'align': 'img_align_celeba', 'raw': 'img_celeba'}
 
+result_dir = 'result/'  # 'result_vqa_baseline/', 'result_gpt-4o-mini_2/'
+model_dir = 'model/'
+diff_dir = 'diff/'  # 'diff_vqa_baseline/', 'diff_gpt-4o-mini_2/'
+
+
 def parse_args():
-    parser = argparse.ArgumentParser()    
+    parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type = str, default = 'waterbird', choices=all_datasets, help="dataset") #celeba, waterbird
     parser.add_argument("--model", type=str, default='best_model_Waterbirds_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_Waterbirds_erm.pth, best_model_Waterbirds_dro.pth
     parser.add_argument("--captioning_model", type=str, default='clipcap', choices=all_captioning_models)
@@ -61,36 +76,33 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-if __name__ == "__main__":  #MR added this to prevent an error
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("device:", device)
+def print_step(title):
+    print("\n" + "=" * 60)
+    print(title)
+    print("=" * 60)
 
-    # load dataset
-    args = parse_args()
 
+def print_config(args, device):
     print("-" * 20 + " CONFIG " + "-" * 20)
+    print(f"{'device':<26} {device}")
     for name, value in vars(args).items():
         print(f"{name:<26} {value}")
     print("-" * 48)
 
+
+# ---------------------------------------------------------------------------
+# Step 1: dataset
+# ---------------------------------------------------------------------------
+def load_dataset(args):
+    """Returns (val_dataset, class_names, image_dir, caption_dir)."""
     if args.dataset == 'waterbird':
         preprocess = get_transform_cub()
         class_names = ['landbird', 'waterbird']
         # group_names = ['landbird_land', 'landbird_water', 'waterbird_land', 'waterbird_water']
         image_dir = 'data/cub/data/waterbird_complete95_forest2water2/'
         caption_dir = 'data/cub/caption/'  # 'data/cub/caption_gpt-4o-mini/'
-        if not os.path.exists(caption_dir):
-            os.makedirs(caption_dir)
-            print(f"Directory '{caption_dir}' created.")
-        else:
-            print(f"Directory '{caption_dir}' already exists. Writing content into or reading content from this directory")
         val_dataset = Waterbirds(data_dir='data/cub/data/waterbird_complete95_forest2water2', split='val', transform=preprocess)
-        if args.number_val_images is not None:
-            # ensure that the given number is not too large
-            num_imgs = min(args.number_val_images, len(val_dataset))
-            print(f"-------- LIMIT DATASET TO {num_imgs} IMAGES TO REDUCE COSTS!!! Originally {len(val_dataset)} images -----------")
-            val_dataset = Subset(val_dataset, range(num_imgs))
     elif args.dataset == 'celeba':
         preprocess = get_transform_celeba()
         class_names = ['not blond', 'blond']
@@ -103,192 +115,199 @@ if __name__ == "__main__":  #MR added this to prevent an error
         image_dir = f'data/celeba/{variant_dir}/data/'
         # Captions differ per variant, so keep them apart.
         caption_dir = f'data/celeba/caption_{args.celeba_variant}/'  # 'data/celeba/caption_gpt-4o-mini/'
-        if not os.path.exists(caption_dir):
-            os.makedirs(caption_dir)
-            print(f"Directory '{caption_dir}' created.")
-        else:
-            print(f"Directory '{caption_dir}' already exists. Writing content into or reading content from this director")
         val_dataset = CelebA(data_dir='data/celeba', split='val', transform=preprocess, variant=variant_dir)
-        if args.number_val_images is not None:
-            # ensure that the given number is not too large
-            num_imgs = min(args.number_val_images, len(val_dataset))
-            print(f"-------- LIMIT DATASET TO {num_imgs} IMAGES TO REDUCE COSTS!!! Originally {len(val_dataset)} images -----------")
-            val_dataset = Subset(val_dataset, range(num_imgs))
     else:
         raise ValueError(f"Dataset must be within {all_datasets}, but was {args.dataset}")
 
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
-
-    result_dir = 'result/'  # 'result_vqa_baseline/', 'result_gpt-4o-mini_2/'
-    model_dir = 'model/'
-    diff_dir = 'diff/'  # 'diff_vqa_baseline/', 'diff_gpt-4o-mini_2/'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
-    if not os.path.exists(diff_dir):
-        os.makedirs(diff_dir)
-
-    # extract caption
-    if not args.no_extract_caption:
-        print("Start extracting captions..")
-        for x, (y, y_group, y_spurious), idx, path in tqdm(val_dataset):
-            image_path = image_dir + path
-            caption = extract_caption(image_path, args.captioning_model)
-            if not os.path.exists(caption_dir):
-                os.makedirs(caption_dir)
-            caption_path = caption_dir + path.split("/")[-1][:-4] + ".txt"
-            with open(caption_path, 'w') as f:
-                f.write(caption)
-        print("Captions of {} images extracted".format(len(val_dataset)))
-
-    # correctify dataset
-    result_path = result_dir + args.dataset +"_" +  args.model.split(".")[0] + ".csv"
-    if not os.path.exists(result_path):
-        model = torch.load(model_dir + args.model, weights_only=False)
-        model = model.to(device)
-        model.eval()
-        start_time = time.time()
-        print("Pretrained model \"{}\" loaded".format(args.model))
-
-        result = {"image":[],
-                "pred":[],
-                "actual":[],
-                "group":[],
-                "spurious":[],
-                "correct":[],
-                "caption":[],
-                }
-
-        with torch.no_grad():
-            running_corrects = 0
-            for (images, (targets, targets_g, targets_s), index, paths) in tqdm(val_dataloader):
-                images = images.to(device)
-                targets = targets.to(device)
-                outputs = model(images)
-                _, preds = torch.max(outputs, 1)
-                for i in range(len(preds)):
-                    image = paths[i]
-                    pred = preds[i]
-                    actual = targets[i]
-                    group = targets_g[i]
-                    spurious = targets_s[i]
-                    caption_path = caption_dir + image.split("/")[-1][:-4] + ".txt"
-                    with open(caption_path, "r") as f:
-                        caption = f.readline()
-                    result['image'].append(image)
-                    result['pred'].append(pred.item())
-                    result['actual'].append(actual.item())
-                    result['group'].append(group.item())
-                    result['spurious'].append(spurious.item())
-                    result['caption'].append(caption)
-                    if pred == actual:
-                            result['correct'].append(1)
-                            running_corrects += 1
-                    else:
-                            result['correct'].append(0)
-
-            print("# of correct examples : ", running_corrects)
-            print("# of wrong examples : ", len(val_dataset) - running_corrects)
-            print("# of all examples : ", len(val_dataset))
-            print("Accuracy : {:.2f} %".format(running_corrects/len(val_dataset)*100))
-
-        df = pd.DataFrame(result)
-        df.to_csv(result_path)
-        print("Classified result stored")
+    if not os.path.exists(caption_dir):
+        os.makedirs(caption_dir)
+        print(f"Directory '{caption_dir}' created.")
     else:
-        df = pd.read_csv(result_path)
-        print("Classified result \"{}\" loaded".format(result_path))
+        print(f"Directory '{caption_dir}' already exists. Writing content into or reading content from this directory")
 
-    # extract keyword
-    df_wrong = df[df['correct'] == 0]
-    df_correct = df[df['correct'] == 1]
-    df_class_0 = df[df['actual'] == 0] # not blond, landbird
-    df_class_1 = df[df['actual'] == 1] # blond, waterbird
-    df_wrong_class_0 = df_wrong[df_wrong['actual'] == 0]
-    df_wrong_class_1 = df_wrong[df_wrong['actual'] == 1]
-    df_correct_class_0 = df_correct[df_correct['actual'] == 0]
-    df_correct_class_1 = df_correct[df_correct['actual'] == 1]
+    if args.number_val_images is not None:
+        # ensure that the given number is not too large
+        num_imgs = min(args.number_val_images, len(val_dataset))
+        print(f"-------- LIMIT DATASET TO {num_imgs} IMAGES TO REDUCE COSTS!!! Originally {len(val_dataset)} images -----------")
+        val_dataset = Subset(val_dataset, range(num_imgs))
 
-    caption_wrong_class_0 = ' '.join(df_wrong_class_0['caption'].tolist())
-    caption_wrong_class_1 = ' '.join(df_wrong_class_1['caption'].tolist())
+    print(f"Validation images: {len(val_dataset)}")
+    return val_dataset, class_names, image_dir, caption_dir
 
-    if "gpt" in args.keyword_extraction_model:
-        keywords_class_0 = extract_gpt_keywords(caption_wrong_class_0)
-        keywords_class_1 = extract_gpt_keywords(caption_wrong_class_1)
-    else:
-        # use yake if not otherwise specified
-        keywords_class_0 = extract_keyword(caption_wrong_class_0)
-        keywords_class_1 = extract_keyword(caption_wrong_class_1)
-    all_keywords = [keywords_class_0, keywords_class_1]
 
-    if args.score == "vqa":
-        images_correct_0 = df_correct_class_0['image'].to_list()
-        img_paths_correct_0 = [image_dir + image for image in images_correct_0]
-        images_correct_1 = df_correct_class_1['image'].to_list()
-        img_paths_correct_1 = [image_dir + image for image in images_correct_1]
-        images_wrong_0 = df_wrong_class_0['image'].to_list()
-        img_paths_wrong_0 = [image_dir + image for image in images_wrong_0]
-        images_wrong_1 = df_wrong_class_1['image'].to_list()
-        img_paths_wrong_1 = [image_dir + image for image in images_wrong_1]
+# ---------------------------------------------------------------------------
+# Step 2: captions
+# ---------------------------------------------------------------------------
+def caption_path_for(caption_dir, image):
+    return caption_dir + image.split("/")[-1][:-4] + ".txt"
 
-        img_paths_correct = [img_paths_correct_0, img_paths_correct_1]
-        img_paths_wrong = [img_paths_wrong_0, img_paths_wrong_1]
 
-        print("Calculate VQA score for class 0")
-        correct_ratios_0, wrong_ratios_0, correct_keyword_occurrences_0, wrong_keyword_occurrences_0, total_correct_0, total_wrong_0 = calculate_vqa_score(img_paths_correct_0, img_paths_wrong_0, keywords_class_0)
-        print("Calculate VQA score for class 0")
-        correct_ratios_1, wrong_ratios_1, correct_keyword_occurrences_1, wrong_keyword_occurrences_1, total_correct_1, total_wrong_1 = calculate_vqa_score(img_paths_correct_1, img_paths_wrong_1, keywords_class_1)
+def extract_captions(val_dataset, image_dir, caption_dir, captioning_model):
+    """Writes one caption .txt per image into caption_dir."""
+    for x, (y, y_group, y_spurious), idx, path in tqdm(val_dataset):
+        caption = extract_caption(image_dir + path, captioning_model)
+        with open(caption_path_for(caption_dir, path), 'w') as f:
+            f.write(caption)
+    print("Captions of {} images extracted".format(len(val_dataset)))
 
-        if args.save_result:
-            # Organize the data into a dictionary or a DataFrame
-            data = {
-                'Metric': [
-                    'correct_ratios', 'wrong_ratios',
-                    'correct_keyword_occurrences', 'wrong_keyword_occurrences',
-                    'total_correct', 'total_wrong'
-                ],
-                'Class_0': [
-                    correct_ratios_0, wrong_ratios_0,
-                    correct_keyword_occurrences_0, wrong_keyword_occurrences_0,
-                    total_correct_0, total_wrong_0
-                ],
-                'Class_1': [
-                    correct_ratios_1, wrong_ratios_1,
-                    correct_keyword_occurrences_1, wrong_keyword_occurrences_1,
-                    total_correct_1, total_wrong_1
-                ]
+
+# ---------------------------------------------------------------------------
+# Step 3: classification
+# ---------------------------------------------------------------------------
+def classify(val_dataset, caption_dir, model_name, device):
+    """Runs the classifier and joins its predictions with the captions."""
+    val_dataloader = DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
+
+    model = torch.load(model_dir + model_name, weights_only=False)
+    model = model.to(device)
+    model.eval()
+    print("Pretrained model \"{}\" loaded".format(model_name))
+
+    result = {"image":[],
+            "pred":[],
+            "actual":[],
+            "group":[],
+            "spurious":[],
+            "correct":[],
+            "caption":[],
             }
 
-            # Convert to a pandas DataFrame
-            df_result = pd.DataFrame(data)
+    with torch.no_grad():
+        running_corrects = 0
+        for (images, (targets, targets_g, targets_s), index, paths) in tqdm(val_dataloader):
+            images = images.to(device)
+            targets = targets.to(device)
+            outputs = model(images)
+            _, preds = torch.max(outputs, 1)
+            for i in range(len(preds)):
+                with open(caption_path_for(caption_dir, paths[i]), "r") as f:
+                    caption = f.readline()
+                correct = int(preds[i] == targets[i])
+                running_corrects += correct
+                result['image'].append(paths[i])
+                result['pred'].append(preds[i].item())
+                result['actual'].append(targets[i].item())
+                result['group'].append(targets_g[i].item())
+                result['spurious'].append(targets_s[i].item())
+                result['caption'].append(caption)
+                result['correct'].append(correct)
 
-            # Save the DataFrame to a CSV file
-            output_file = 'vqa_scores.csv'
-            output_path = os.path.join(result_dir, output_file)
-            df_result.to_csv(output_path, index=False)
+    print("# of correct examples : ", running_corrects)
+    print("# of wrong examples : ", len(val_dataset) - running_corrects)
+    print("# of all examples : ", len(val_dataset))
+    print("Accuracy : {:.2f} %".format(running_corrects/len(val_dataset)*100))
 
-            print(f"Data saved to {output_file}")
+    return pd.DataFrame(result)
 
+
+# ---------------------------------------------------------------------------
+# Step 4: keywords
+# ---------------------------------------------------------------------------
+def extract_keywords(df_wrong_class, keyword_extraction_model):
+    """Keywords from the joined captions of one class's misclassified images."""
+    captions = ' '.join(df_wrong_class['caption'].tolist())
+    if "gpt" in keyword_extraction_model:
+        return extract_gpt_keywords(captions)
+    # use yake if not otherwise specified
+    return extract_keyword(captions)
+
+
+# ---------------------------------------------------------------------------
+# Step 5: scores
+# ---------------------------------------------------------------------------
+def vqa_score(image_dir, df_correct, df_wrong, keywords, save_result):
+    stats = {}
+    for c in (0, 1):
+        print(f"\nCalculate VQA score for class {c}")
+        img_paths_correct = [image_dir + image for image in df_correct[c]['image'].to_list()]
+        img_paths_wrong = [image_dir + image for image in df_wrong[c]['image'].to_list()]
+        stats[c] = calculate_vqa_score(img_paths_correct, img_paths_wrong, keywords[c])
+
+    if save_result:
+        df_result = pd.DataFrame({
+            'Metric': [
+                'correct_ratios', 'wrong_ratios',
+                'correct_keyword_occurrences', 'wrong_keyword_occurrences',
+                'total_correct', 'total_wrong'
+            ],
+            'Class_0': list(stats[0]),
+            'Class_1': list(stats[1]),
+        })
+        output_path = os.path.join(result_dir, 'vqa_scores.csv')
+        df_result.to_csv(output_path, index=False)
+        print(f"\nData saved to {output_path}")
+
+
+def clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, keywords):
+    """CLIP score from the paper: similarity on wrong images minus similarity on correct ones."""
+    if args.number_val_images is not None:
+        print("Warning: If all images are classified correctly, then score calculation will throw an error")
+    dist = {}
+    for c in (0, 1):
+        print(f"\nCLIP similarity for class '{class_names[c]}'")
+        print(f"  wrong images ({len(df_wrong[c])}):")
+        similarity_wrong = calc_similarity(image_dir, df_wrong[c]['image'], keywords[c])
+        print(f"  correct images ({len(df_correct[c])}):")
+        similarity_correct = calc_similarity(image_dir, df_correct[c]['image'], keywords[c])
+        dist[c] = similarity_wrong - similarity_correct
+
+    diffs = {}
+    for c, other in ((0, 1), (1, 0)):
+        print("\n" + "*"*60)
+        print("Result for class :", class_names[c])
+        print("*"*60 + "\n")
+        diffs[c] = print_similarity(keywords[c], keywords[other], dist[c], dist[other], df_class[c])
+
+    if args.save_result:
+        print()
+        for c in (0, 1):
+            diff_path = diff_dir + args.dataset + "_" + args.model.split(".")[0] + "_" + class_names[c] + ".csv"
+            diffs[c].to_csv(diff_path)
+            print(f"Data saved to {diff_path}")
+
+
+if __name__ == "__main__":  #MR added this to prevent an error
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    args = parse_args()
+    print_config(args, device)
+
+    os.makedirs(result_dir, exist_ok=True)
+    os.makedirs(diff_dir, exist_ok=True)
+
+    print_step("STEP 1/5: Load dataset")
+    val_dataset, class_names, image_dir, caption_dir = load_dataset(args)
+
+    print_step("STEP 2/5: Extract captions")
+    if args.no_extract_caption:
+        print(f"Skipped (--no_extract_caption), reading captions from '{caption_dir}'")
+    else:
+        extract_captions(val_dataset, image_dir, caption_dir, args.captioning_model)
+
+    print_step("STEP 3/5: Classify images")
+    result_path = result_dir + args.dataset + "_" + args.model.split(".")[0] + ".csv"
+    if os.path.exists(result_path):
+        # Cached predictions also contain the captions, so new caption .txt files are ignored.
+        df = pd.read_csv(result_path)
+        print("Classified result \"{}\" loaded".format(result_path))
+    else:
+        df = classify(val_dataset, caption_dir, args.model, device)
+        df.to_csv(result_path)
+        print("Classified result stored")
+
+    # Split into class 0 (landbird / not blond) and class 1 (waterbird / blond)
+    df_class = {c: df[df['actual'] == c] for c in (0, 1)}
+    df_correct = {c: df_class[c][df_class[c]['correct'] == 1] for c in (0, 1)}
+    df_wrong = {c: df_class[c][df_class[c]['correct'] == 0] for c in (0, 1)}
+
+    print_step("STEP 4/5: Extract keywords")
+    keywords = {c: extract_keywords(df_wrong[c], args.keyword_extraction_model) for c in (0, 1)}
+
+    print_step(f"STEP 5/5: Calculate {args.score.upper()} score")
+    if args.score == "vqa":
+        vqa_score(image_dir, df_correct, df_wrong, keywords, args.save_result)
     else:  # if not otherwise specified use CLIP score from paper
-        # calculate similarity
-        print("Start calculating scores..")
-        if args.number_val_images is not None:
-            print("Warning: If all images are classified correctly, then score calculation will throw an error")
-        similarity_wrong_class_0 = calc_similarity(image_dir, df_wrong_class_0['image'], keywords_class_0)
-        similarity_correct_class_0 = calc_similarity(image_dir, df_correct_class_0['image'], keywords_class_0)
-        similarity_wrong_class_1 = calc_similarity(image_dir, df_wrong_class_1['image'], keywords_class_1)
-        similarity_correct_class_1 = calc_similarity(image_dir, df_correct_class_1['image'], keywords_class_1)
+        clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, keywords)
 
-        dist_class_0 = similarity_wrong_class_0 - similarity_correct_class_0
-        dist_class_1 = similarity_wrong_class_1 - similarity_correct_class_1
-
-        print("Result for class :", class_names[0])
-        diff_0 = print_similarity(keywords_class_0, keywords_class_1, dist_class_0, dist_class_1, df_class_0)
-        print("*"*60)
-        print("Result for class :", class_names[1])
-        diff_1 = print_similarity(keywords_class_1, keywords_class_0, dist_class_1, dist_class_0, df_class_1)
-
-        if args.save_result:
-            diff_path_0 = diff_dir + args.dataset +"_" +  args.model.split(".")[0] + "_" +  class_names[0] + ".csv"
-            diff_path_1 = diff_dir + args.dataset +"_" +  args.model.split(".")[0] + "_" +  class_names[1] + ".csv"
-            diff_0.to_csv(diff_path_0)
-            diff_1.to_csv(diff_path_1)
+    elapsed = int(time.perf_counter() - start_time)
+    print(f"\nB2T finished in {elapsed // 3600}h {elapsed % 3600 // 60}m {elapsed % 60}s")
