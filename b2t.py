@@ -45,15 +45,16 @@ from data.waterbirds import Waterbirds, get_transform_cub
 from function.extract_caption import extract_caption ## default-> cuda:0/ clip:ViT-B/32
 from function.extract_keyword import extract_keyword
 from function.gpt_keywords import extract_gpt_keywords
+from function.gpt_models import GPT_MODELS
 from function.calculate_similarity import calc_similarity
 from function.print_similarity import print_similarity
 from function.vqa_score import calculate_vqa_score
 
-all_captioning_models = ["clipcap", "multicap", "gpt-4o", "gpt-4o-mini"]
-all_keyword_extraction_models = ["yake", "gpt-4o", "gpt-4o-mini"]
+all_captioning_models = ["clipcap", "multicap", *GPT_MODELS]
+all_keyword_extraction_models = ["yake", *GPT_MODELS]
 all_datasets = ['waterbird', 'celeba']
 all_scores = ['clip', 'vqa']
-all_vqa_models = ['gpt-4o', 'gpt-4o-mini', 'random']
+all_vqa_models = [*GPT_MODELS, 'random']
 # CelebA ships two image sets under data/celeba/; both share the annotation CSVs.
 celeba_variant_dirs = {'align': 'img_align_celeba', 'raw': 'img_celeba'}
 
@@ -245,7 +246,7 @@ def read_captions(images, caption_dir):
 def extract_keywords(df_wrong_class, keyword_extraction_model):
     """Keywords from the joined captions of one class's misclassified images."""
     captions = ' '.join(df_wrong_class['caption'].tolist())
-    if keyword_extraction_model in ("gpt-4o", "gpt-4o-mini"):
+    if keyword_extraction_model in GPT_MODELS:
         return extract_gpt_keywords(captions, model=keyword_extraction_model)
     if keyword_extraction_model == "yake":
         return extract_keyword(captions)

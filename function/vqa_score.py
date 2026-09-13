@@ -3,6 +3,7 @@ from openai import OpenAI
 import os
 import base64
 from dotenv import load_dotenv
+from function.gpt_models import completion_kwargs
 import ast
 import re
 from tqdm import tqdm
@@ -91,7 +92,7 @@ def query_gpt_as_vqa(image_path, keywords, model="gpt-4o-mini"):
     chat_completion = _get_client().chat.completions.create(
         messages=message,
         model=model,
-        max_tokens=300,
+        **completion_kwargs(model),
     )
     try:
         # Attempt to extract the list from the input string

@@ -50,10 +50,10 @@ Kroki: klasyfikacja zbioru walidacyjnego (cache) → generowanie opisów obrazó
 |---|---|---|---|
 | `--dataset` | `waterbird`, `celeba` | `waterbird` | Zbiór danych |
 | `--model` | nazwa pliku z `model/` | `best_model_Waterbirds_erm.pth` | Checkpoint klasyfikatora |
-| `--captioning_model` | `clipcap`, `multicap`, `gpt-4o`, `gpt-4o-mini` | `clipcap` | Model do generowania opisów. `multicap` = ClipCap, 10 opisów sklejonych w jeden |
-| `--keyword_extraction_model` | `yake`, `gpt-4o`, `gpt-4o-mini` | `yake` | Ekstrakcja słów kluczowych |
+| `--captioning_model` | `clipcap`, `multicap`, `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna` | `clipcap` | Model do generowania opisów. `multicap` = ClipCap, 10 opisów sklejonych w jeden |
+| `--keyword_extraction_model` | `yake`, `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna` | `yake` | Ekstrakcja słów kluczowych |
 | `--score` | `clip`, `vqa` | `clip` | `clip` = score z artykułu, `vqa` = model z `--vqa_model` odpowiada, czy słowo kluczowe widać na obrazie |
-| `--vqa_model` | `gpt-4o`, `gpt-4o-mini`, `random` | `gpt-4o-mini` | Model do score VQA (tylko przy `--score vqa`). `random` losuje 0/1 dla każdego słowa bez patrzenia na obraz: darmowy test pipeline'u i punkt odniesienia (różnica poprawne/błędne ≈ 0) |
+| `--vqa_model` | `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna`, `random` | `gpt-4o-mini` | Model do score VQA (tylko przy `--score vqa`). `random` losuje 0/1 dla każdego słowa bez patrzenia na obraz: darmowy test pipeline'u i punkt odniesienia (różnica poprawne/błędne ≈ 0) |
 | `--number_val_images` | liczba całkowita | brak (wszystkie) | Ogranicza zbiór walidacyjny do pierwszych N obrazów (szybciej / taniej) |
 | `--no_extract_caption` | flaga | wyłączona | Pomija generowanie opisów i używa już zapisanych |
 | `--celeba_variant` | `align`, `raw` | `align` | Zestaw obrazów CelebA. `raw` nie pasuje do checkpointów, więc wyniki nie są porównywalne z artykułem. Dla waterbird ignorowane |

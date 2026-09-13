@@ -2,6 +2,7 @@ from openai import OpenAI
 import os
 import base64
 from dotenv import load_dotenv
+from function.gpt_models import completion_kwargs
 
 default_prompt = "Generate a descriptive caption for the given image. Please respond only with the caption!"
 default_prompt_2 = ("Generate a caption to the given image that is descriptive and precise."
@@ -72,7 +73,7 @@ def generate_gpt_caption(img_path, prompt=default_prompt_2, model="gpt-4o-mini")
     chat_completion = _get_client().chat.completions.create(
         messages=message,
         model=model,
-        max_tokens=300,
+        **completion_kwargs(model),
     )
     # print(chat_completion.choices[0].message.content)
     return chat_completion.choices[0].message.content

@@ -1,6 +1,7 @@
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+from function.gpt_models import completion_kwargs
 import ast
 import re
 
@@ -60,7 +61,7 @@ def extract_gpt_keywords(captions, prompt=default_prompt, model="gpt-4o-mini"):
     chat_completion = _get_client().chat.completions.create(
         messages=message,
         model=model,
-        max_tokens=300,
+        **completion_kwargs(model),
     )
     response = chat_completion.choices[0].message.content
     #print(response)

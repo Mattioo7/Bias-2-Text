@@ -15,6 +15,7 @@ import skimage.io as io
 from PIL import Image
 
 from function.gpt_captioning import generate_gpt_caption
+from function.gpt_models import GPT_MODELS
 
 N = type(None)
 V = np.array
@@ -302,7 +303,7 @@ caption_model = caption_model.eval()
 caption_model = caption_model.to(clip_device)
 
 def extract_caption(image_path, model):
-    if model in ("gpt-4o", "gpt-4o-mini"):
+    if model in GPT_MODELS:
         return generate_gpt_caption(image_path, model=model)
     elif model in ("clipcap", "multicap"):
         image = io.imread(image_path)
