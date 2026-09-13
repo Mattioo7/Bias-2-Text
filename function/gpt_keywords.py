@@ -63,6 +63,10 @@ def extract_gpt_keywords(captions, prompt=default_prompt, model="gpt-4o-mini"):
         model=model,
         **completion_kwargs(model),
     )
+    if chat_completion.choices[0].finish_reason == "length":
+        # A cut-off list can't be parsed, and an empty keyword list invalidates the whole run.
+        raise RuntimeError(f"{model} hit the output token limit while extracting keywords; "
+                           "the response was cut off. Raise max_tokens in completion_kwargs.")
     response = chat_completion.choices[0].message.content
     #print(response)
     try:

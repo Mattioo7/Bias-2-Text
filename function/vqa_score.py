@@ -94,6 +94,9 @@ def query_gpt_as_vqa(image_path, keywords, model="gpt-4o-mini"):
         model=model,
         **completion_kwargs(model),
     )
+    if chat_completion.choices[0].finish_reason == "length":
+        # The cut-off list usually fails to parse, so this image counts as showing no keywords.
+        tqdm.write(f"WARNING: {model} hit the output token limit for '{image_path}'; the VQA answer was cut off.")
     try:
         # Attempt to extract the list from the input string
         result = extract_list_from_string(chat_completion.choices[0].message.content)

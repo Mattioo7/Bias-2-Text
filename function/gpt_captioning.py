@@ -2,6 +2,7 @@ from openai import OpenAI
 import os
 import base64
 from dotenv import load_dotenv
+from tqdm import tqdm
 from function.gpt_models import completion_kwargs
 
 default_prompt = "Generate a descriptive caption for the given image. Please respond only with the caption!"
@@ -75,5 +76,7 @@ def generate_gpt_caption(img_path, prompt=default_prompt_2, model="gpt-4o-mini")
         model=model,
         **completion_kwargs(model),
     )
+    if chat_completion.choices[0].finish_reason == "length":
+        tqdm.write(f"WARNING: {model} hit the output token limit for '{img_path}'; the caption was cut off.")
     # print(chat_completion.choices[0].message.content)
     return chat_completion.choices[0].message.content
