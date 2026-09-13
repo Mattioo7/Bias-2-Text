@@ -242,10 +242,11 @@ def read_captions(images, caption_dir):
 def extract_keywords(df_wrong_class, keyword_extraction_model):
     """Keywords from the joined captions of one class's misclassified images."""
     captions = ' '.join(df_wrong_class['caption'].tolist())
-    if "gpt" in keyword_extraction_model:
-        return extract_gpt_keywords(captions)
-    # use yake if not otherwise specified
-    return extract_keyword(captions)
+    if keyword_extraction_model in ("gpt-4o", "gpt-4o-mini"):
+        return extract_gpt_keywords(captions, model=keyword_extraction_model)
+    if keyword_extraction_model == "yake":
+        return extract_keyword(captions)
+    raise ValueError(f"Unknown keyword extraction model: '{keyword_extraction_model}'")
 
 
 # ---------------------------------------------------------------------------

@@ -302,20 +302,20 @@ caption_model = caption_model.eval()
 caption_model = caption_model.to(clip_device)
 
 def extract_caption(image_path, model):
-    if "gpt" in model:
-        caption = generate_gpt_caption(image_path)
-        return caption
-    else:
-        # Use clipcap if not otherwise specified
+    if model in ("gpt-4o", "gpt-4o-mini"):
+        return generate_gpt_caption(image_path, model=model)
+    elif model in ("clipcap", "multicap"):
         image = io.imread(image_path)
         pil_image = Image.fromarray(image)
         image = preprocess(pil_image).unsqueeze(0).to(clip_device)
         with torch.no_grad():
             prefix = clip_model.encode_image(image).to(clip_device, dtype=torch.float32)
             prefix_embed = caption_model.clip_project(prefix).reshape(1, prefix_length, -1)
-        if "multicap" in model:
+        if model == "multicap":
             # Use clipcap model but generate n captions that are concatenated together to form the final more robust description
             generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed, multiple_captions=True, temperature=0.4, top_p=0.8, num_captions=10)
         else:
             generated_text_prefix = generate2(caption_model, tokenizer, embed=prefix_embed)
         return generated_text_prefix
+    else:
+        raise ValueError(f"Unknown captioning model: '{model}'")
