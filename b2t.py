@@ -100,11 +100,23 @@ def print_step(title):
     print("=" * 60)
 
 
+def irrelevant_args(args):
+    """Options that have no effect with the chosen dataset and score."""
+    skip = set()
+    if args.score != 'vqa':
+        skip.add('vqa_model')
+    if args.dataset != 'celeba':
+        skip.add('celeba_variant')
+    return skip
+
+
 def print_config(args, device):
     print("-" * 20 + " CONFIG " + "-" * 20)
     print(f"{'device':<26} {device}")
+    skip = irrelevant_args(args)
     for name, value in vars(args).items():
-        print(f"{name:<26} {value}")
+        if name not in skip:
+            print(f"{name:<26} {value}")
     print("-" * 48)
 
 
