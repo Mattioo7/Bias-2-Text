@@ -18,6 +18,7 @@ model/*
 function/clipcap.pt
 
 # Outputs
+outputs/
 
 # Other
 /NOTES.md

@@ -5,6 +5,20 @@ B2T (Bias-to-Text) pipeline:
     3. Extract captions for the images the score needs (all for CLIP, misclassified for VQA)
     4. Extract keywords from captions of misclassified images, per class
     5. Score the keywords (CLIP score from the paper, or VQA score) and save them
+
+Outputs go to outputs/. The directory path of each step holds only the arguments that step
+depends on, so steps 2-4 are computed once per configuration and reused by later runs:
+
+    outputs/<dataset>[_<celeba_variant>]/
+      _cache/captions/<captioning_model>/<image>.txt   caption pool, shared by all models and subsets
+      <model>/<n_all | n<N>>/
+        predictions.csv                                step 2
+        <captioning_model>/
+          captions.csv                                 step 3, captions of this experiment's images
+          <keyword_extraction_model>/
+            keywords.json                              step 4
+            runs/<timestamp>_<score>[_<vqa_model>]/    step 5, a new directory on every run
+              config.json, diff_<class>.csv | vqa_scores.csv
 """
 
 import os
@@ -31,6 +45,7 @@ from torch.serialization import SourceChangeWarning
 warnings.filterwarnings("ignore", category=SourceChangeWarning)
 
 import argparse
+import json
 
 import pandas as pd
 import torch
@@ -58,9 +73,8 @@ all_vqa_models = [*GPT_MODELS, 'random']
 # CelebA ships two image sets under data/celeba/; both share the annotation CSVs.
 celeba_variant_dirs = {'align': 'img_align_celeba', 'raw': 'img_celeba'}
 
-result_dir = 'result/'  # 'result_vqa_baseline/', 'result_gpt-4o-mini_2/'
+outputs_dir = 'outputs/'
 model_dir = 'model/'
-diff_dir = 'diff/'  # 'diff_vqa_baseline/', 'diff_gpt-4o-mini_2/'
 
 
 def parse_args():
@@ -73,7 +87,6 @@ def parse_args():
     parser.add_argument("--vqa_model", type=str, default='gpt-4o-mini', choices=all_vqa_models,
                         help="Model answering which keywords are visible in an image (only with --score vqa). 'random' answers 0/1 at random, without the API.")
     parser.add_argument("--number_val_images", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
-    parser.add_argument("--no_extract_caption", action='store_true', help="Set this flag if the captions should NOT be extracted")
     parser.add_argument("--celeba_variant", type=str, default='align', choices=list(celeba_variant_dirs),
                         help="Which CelebA image set to use: 'align' (178x218 crops, matches the pretrained checkpoints) or 'raw' (in-the-wild originals). Ignored for waterbird.")
     parser.add_argument("--save_result", default = True)
@@ -95,17 +108,43 @@ def print_config(args, device):
     print("-" * 48)
 
 
+def output_paths(args):
+    """Where each step stores its result; see the module docstring for the layout."""
+    dataset_dir = outputs_dir + args.dataset
+    if args.dataset == 'celeba':
+        dataset_dir += "_" + args.celeba_variant
+    subset = "n_all" if args.number_val_images is None else f"n{args.number_val_images}"
+    predictions_dir = f"{dataset_dir}/{args.model.split('.')[0]}/{subset}"
+    captioning_dir = f"{predictions_dir}/{args.captioning_model}"
+    keywords_dir = f"{captioning_dir}/{args.keyword_extraction_model}"
+
+    run_name = time.strftime("%Y-%m-%d_%H-%M-%S") + "_" + args.score
+    if args.score == "vqa":
+        run_name += "_" + args.vqa_model
+
+    paths = {
+        "caption_pool": f"{dataset_dir}/_cache/captions/{args.captioning_model}/",
+        "predictions": f"{predictions_dir}/predictions.csv",
+        "captions": f"{captioning_dir}/captions.csv",
+        "keywords": f"{keywords_dir}/keywords.json",
+        "run": f"{keywords_dir}/runs/{run_name}/",
+    }
+    # The run directory is created in step 5, so a run that fails earlier leaves no empty one behind.
+    for directory in (paths["caption_pool"], keywords_dir):
+        os.makedirs(directory, exist_ok=True)
+    return paths
+
+
 # ---------------------------------------------------------------------------
 # Step 1: dataset
 # ---------------------------------------------------------------------------
 def load_dataset(args):
-    """Returns (val_dataset, class_names, image_dir, caption_dir)."""
+    """Returns (val_dataset, class_names, image_dir)."""
     if args.dataset == 'waterbird':
         preprocess = get_transform_cub()
         class_names = ['landbird', 'waterbird']
         # group_names = ['landbird_land', 'landbird_water', 'waterbird_land', 'waterbird_water']
         image_dir = 'data/cub/data/waterbird_complete95_forest2water2/'
-        caption_dir = 'data/cub/caption/'  # 'data/cub/caption_gpt-4o-mini/'
         val_dataset = Waterbirds(data_dir='data/cub/data/waterbird_complete95_forest2water2', split='val', transform=preprocess)
     elif args.dataset == 'celeba':
         preprocess = get_transform_celeba()
@@ -117,17 +156,9 @@ def load_dataset(args):
                   "aligned images. The pretrained checkpoints were trained on those, so results on 'raw' "
                   "are not comparable to the paper.")
         image_dir = f'data/celeba/{variant_dir}/data/'
-        # Captions differ per variant, so keep them apart.
-        caption_dir = f'data/celeba/caption_{args.celeba_variant}/'  # 'data/celeba/caption_gpt-4o-mini/'
         val_dataset = CelebA(data_dir='data/celeba', split='val', transform=preprocess, variant=variant_dir)
     else:
         raise ValueError(f"Dataset must be within {all_datasets}, but was {args.dataset}")
-
-    if not os.path.exists(caption_dir):
-        os.makedirs(caption_dir)
-        print(f"Directory '{caption_dir}' created.")
-    else:
-        print(f"Directory '{caption_dir}' already exists. Writing content into or reading content from this directory")
 
     if args.number_val_images is not None:
         # ensure that the given number is not too large
@@ -136,23 +167,12 @@ def load_dataset(args):
         val_dataset = Subset(val_dataset, range(num_imgs))
 
     print(f"Validation images: {len(val_dataset)}")
-    return val_dataset, class_names, image_dir, caption_dir
+    return val_dataset, class_names, image_dir
 
 
 # ---------------------------------------------------------------------------
 # Step 2: predictions
 # ---------------------------------------------------------------------------
-def run_tag(args):
-    """Identifies everything the predictions depend on: dataset, image variant, model and image subset."""
-    tag = args.dataset
-    if args.dataset == 'celeba':
-        tag += "_" + args.celeba_variant
-    tag += "_" + args.model.split(".")[0]
-    if args.number_val_images is not None:
-        tag += f"_n{args.number_val_images}"
-    return tag
-
-
 def classify(val_dataset, model_name, device):
     """Runs the classifier. Returns one row per image, without captions."""
     val_dataloader = DataLoader(val_dataset, batch_size=256, num_workers=4, drop_last=False)
@@ -221,12 +241,16 @@ def caption_path_for(caption_dir, image):
 
 
 def extract_captions(images, image_dir, caption_dir, captioning_model):
-    """Writes one caption .txt per image into caption_dir."""
-    for image in tqdm(images):
+    """Writes one caption .txt per image into caption_dir, skipping images an earlier run already captioned."""
+    missing = [image for image in images if not os.path.exists(caption_path_for(caption_dir, image))]
+    print(f"{len(images) - len(missing)} captions loaded from '{caption_dir}', {len(missing)} to extract")
+    if not missing:
+        return
+    for image in tqdm(missing):
         caption = extract_caption(image_dir + image, captioning_model)
         with open(caption_path_for(caption_dir, image), 'w') as f:
             f.write(caption)
-    print("Captions of {} images extracted".format(len(images)))
+    print("Captions of {} images extracted".format(len(missing)))
 
 
 def read_captions(images, caption_dir):
@@ -234,10 +258,18 @@ def read_captions(images, caption_dir):
     for image in images:
         path = caption_path_for(caption_dir, image)
         if not os.path.exists(path):
-            raise FileNotFoundError(f"Caption '{path}' is missing. Run without --no_extract_caption.")
+            raise FileNotFoundError(f"Caption '{path}' is missing.")
         with open(path, "r") as f:
             captions.append(f.readline())
     return captions
+
+
+def save_captions(df, caption_dir, captions_path):
+    """Captions of every image of this experiment found in the pool. Rewritten on each run, so a
+    CLIP run (all images) after a VQA run (misclassified only) extends the file."""
+    images = [image for image in df['image'] if os.path.exists(caption_path_for(caption_dir, image))]
+    pd.DataFrame({"image": images, "caption": read_captions(images, caption_dir)}).to_csv(captions_path, index=False)
+    print(f"Captions of {len(images)} images stored in \"{captions_path}\"")
 
 
 # ---------------------------------------------------------------------------
@@ -253,10 +285,38 @@ def extract_keywords(df_wrong_class, keyword_extraction_model):
     raise ValueError(f"Unknown keyword extraction model: '{keyword_extraction_model}'")
 
 
+def load_or_extract_keywords(keywords_path, df_wrong, class_names, keyword_extraction_model):
+    """Keywords are extracted once per experiment and reused, which also keeps GPT keywords fixed across runs."""
+    if os.path.exists(keywords_path):
+        with open(keywords_path) as f:
+            saved = json.load(f)
+        print("Keywords \"{}\" loaded".format(keywords_path))
+        return {c: saved[class_names[c]] for c in (0, 1)}
+
+    keywords = {c: extract_keywords(df_wrong[c], keyword_extraction_model) for c in (0, 1)}
+    empty = [class_names[c] for c in (0, 1) if not keywords[c]]
+    if empty:
+        # extract_gpt_keywords returns [] when it can't parse the answer; caching that would break every later run.
+        print(f"WARNING: no keywords for {empty}. Not storing them, the next run extracts them again.")
+    else:
+        with open(keywords_path, 'w') as f:
+            json.dump({class_names[c]: keywords[c] for c in (0, 1)}, f, indent=2)
+        print("Keywords stored in \"{}\"".format(keywords_path))
+    return keywords
+
+
 # ---------------------------------------------------------------------------
 # Step 5: scores
 # ---------------------------------------------------------------------------
-def vqa_score(image_dir, df_correct, df_wrong, keywords, vqa_model, save_result):
+def save_config(args, device, paths):
+    config = {**vars(args), "device": str(device), "paths": paths}
+    config_path = paths["run"] + "config.json"
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    print(f"Run directory: \"{paths['run']}\"")
+
+
+def vqa_score(image_dir, df_correct, df_wrong, keywords, vqa_model, save_result, run_dir):
     stats = {}
     for c in (0, 1):
         print(f"\nCalculate VQA score for class {c}")
@@ -274,12 +334,12 @@ def vqa_score(image_dir, df_correct, df_wrong, keywords, vqa_model, save_result)
             'Class_0': list(stats[0]),
             'Class_1': list(stats[1]),
         })
-        output_path = os.path.join(result_dir, 'vqa_scores.csv')
+        output_path = run_dir + 'vqa_scores.csv'
         df_result.to_csv(output_path, index=False)
         print(f"\nData saved to {output_path}")
 
 
-def clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, keywords):
+def clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, keywords, run_dir):
     """CLIP score from the paper: similarity on wrong images minus similarity on correct ones."""
     if args.number_val_images is not None:
         print("Warning: If all images are classified correctly, then score calculation will throw an error")
@@ -302,7 +362,7 @@ def clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, key
     if args.save_result:
         print()
         for c in (0, 1):
-            diff_path = diff_dir + run_tag(args) + "_" + class_names[c] + ".csv"
+            diff_path = run_dir + "diff_" + class_names[c] + ".csv"
             diffs[c].to_csv(diff_path)
             print(f"Data saved to {diff_path}")
 
@@ -313,14 +373,14 @@ if __name__ == "__main__":  #MR added this to prevent an error
     args = parse_args()
     print_config(args, device)
 
-    os.makedirs(result_dir, exist_ok=True)
-    os.makedirs(diff_dir, exist_ok=True)
+    paths = output_paths(args)
+    caption_dir = paths["caption_pool"]
 
     print_step("STEP 1/5: Load dataset")
-    val_dataset, class_names, image_dir, caption_dir = load_dataset(args)
+    val_dataset, class_names, image_dir = load_dataset(args)
 
     print_step("STEP 2/5: Classify images")
-    df = load_or_classify(val_dataset, result_dir + run_tag(args) + ".csv", args.model, device)
+    df = load_or_classify(val_dataset, paths["predictions"], args.model, device)
     print_accuracy(df)
 
     print_step("STEP 3/5: Extract captions")
@@ -329,11 +389,9 @@ if __name__ == "__main__":  #MR added this to prevent an error
     needs_caption = df['correct'] == 0 if args.score == "vqa" else pd.Series(True, index=df.index)
     images_to_caption = df.loc[needs_caption, 'image'].tolist()
     print(f"Captions needed for {len(images_to_caption)} of {len(df)} images ({args.score.upper()} score)")
-    if args.no_extract_caption:
-        print(f"Skipped (--no_extract_caption), reading captions from '{caption_dir}'")
-    else:
-        extract_captions(images_to_caption, image_dir, caption_dir, args.captioning_model)
+    extract_captions(images_to_caption, image_dir, caption_dir, args.captioning_model)
     df.loc[needs_caption, 'caption'] = read_captions(images_to_caption, caption_dir)
+    save_captions(df, caption_dir, paths["captions"])
 
     # Split into class 0 (landbird / not blond) and class 1 (waterbird / blond)
     df_class = {c: df[df['actual'] == c] for c in (0, 1)}
@@ -341,13 +399,16 @@ if __name__ == "__main__":  #MR added this to prevent an error
     df_wrong = {c: df_class[c][df_class[c]['correct'] == 0] for c in (0, 1)}
 
     print_step("STEP 4/5: Extract keywords")
-    keywords = {c: extract_keywords(df_wrong[c], args.keyword_extraction_model) for c in (0, 1)}
+    keywords = load_or_extract_keywords(paths["keywords"], df_wrong, class_names, args.keyword_extraction_model)
 
     print_step(f"STEP 5/5: Calculate {args.score.upper()} score")
+    if args.save_result:
+        os.makedirs(paths["run"])
+        save_config(args, device, paths)
     if args.score == "vqa":
-        vqa_score(image_dir, df_correct, df_wrong, keywords, args.vqa_model, args.save_result)
+        vqa_score(image_dir, df_correct, df_wrong, keywords, args.vqa_model, args.save_result, paths["run"])
     else:  # if not otherwise specified use CLIP score from paper
-        clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, keywords)
+        clip_score(args, image_dir, class_names, df_class, df_correct, df_wrong, keywords, paths["run"])
 
     elapsed = int(time.perf_counter() - start_time)
     print(f"\nB2T finished in {elapsed // 3600}h {elapsed % 3600 // 60}m {elapsed % 60}s")

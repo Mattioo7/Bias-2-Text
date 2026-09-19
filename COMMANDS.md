@@ -55,20 +55,29 @@ Kroki: klasyfikacja zbioru walidacyjnego (cache) → generowanie opisów obrazó
 | `--score` | `clip`, `vqa` | `clip` | `clip` = score z artykułu, `vqa` = model z `--vqa_model` odpowiada, czy słowo kluczowe widać na obrazie |
 | `--vqa_model` | `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna`, `random` | `gpt-4o-mini` | Model do score VQA (tylko przy `--score vqa`). `random` losuje 0/1 dla każdego słowa bez patrzenia na obraz: darmowy test pipeline'u i punkt odniesienia (różnica poprawne/błędne ≈ 0) |
 | `--number_val_images` | liczba całkowita | brak (wszystkie) | Ogranicza zbiór walidacyjny do pierwszych N obrazów (szybciej / taniej) |
-| `--no_extract_caption` | flaga | wyłączona | Pomija generowanie opisów i używa już zapisanych |
 | `--celeba_variant` | `align`, `raw` | `align` | Zestaw obrazów CelebA. `raw` nie pasuje do checkpointów, więc wyniki nie są porównywalne z artykułem. Dla waterbird ignorowane |
 | `--save_result` | dowolna wartość | `True` | Zapis wyników do CSV (patrz uwagi) |
 
 ### Pliki wyjściowe
 
-| Plik | Zawartość |
-|---|---|
-| `data/cub/caption/*.txt`, `data/celeba/caption_<variant>/*.txt` | Opisy obrazów |
-| `result/<tag>.csv` | Predykcje klasyfikatora, bez opisów (cache) |
-| `diff/<tag>_<klasa>.csv` | Słowa kluczowe i CLIP score (`--score clip`) |
+Wszystko trafia do `outputs/`. Ścieżka każdego kroku zawiera tylko argumenty, od których ten krok zależy, więc kroki 2–4 liczą się raz na konfigurację, a kolejne runy je wczytują:
 
-`<tag>` = `<dataset>[_<celeba_variant>]_<model>[_n<number_val_images>]`, np. `waterbird_best_model_Waterbirds_erm`, `celeba_align_best_model_CelebA_erm_n100`. Wariant pojawia się tylko dla CelebA, `_n...` tylko przy `--number_val_images`.
-| `result/vqa_scores.csv` | Surowe statystyki VQA (`--score vqa`) |
+```
+outputs/<dataset>[_<celeba_variant>]/            # np. waterbird, celeba_align
+  _cache/captions/<captioning_model>/<obraz>.txt  # pula opisów, wspólna dla wszystkich modeli i podzbiorów
+  <model bez .pth>/<n_all | n<N>>/                # np. best_model_Waterbirds_erm/n50
+    predictions.csv                               # krok 2: predykcje klasyfikatora
+    <captioning_model>/
+      captions.csv                                # krok 3: image, caption dla obrazów tego eksperymentu
+      <keyword_extraction_model>/
+        keywords.json                             # krok 4: słowa kluczowe per klasa
+        runs/<data_godzina>_<score>[_<vqa_model>]/  # krok 5: nowy katalog przy każdym runie
+          config.json                             # wszystkie argumenty + ścieżki użytych plików
+          diff_<klasa>.csv                        # --score clip
+          vqa_scores.csv                          # --score vqa
+```
+
+Stare katalogi `result/`, `diff/`, `data/cub/caption/`, `data/celeba/caption_<variant>/` nie są już używane.
 
 ### Przykłady
 
@@ -95,11 +104,6 @@ uv run python b2t.py --dataset celeba --model best_model_CelebA_dro.pth
 CelebA na surowych obrazach:
 ```bash
 uv run python b2t.py --dataset celeba --model best_model_CelebA_erm.pth --celeba_variant raw
-```
-
-Ponowne uruchomienie bez generowania opisów od nowa (opisy już są na dysku):
-```bash
-uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --no_extract_caption
 ```
 
 Szybki test na 100 obrazach:
@@ -139,9 +143,11 @@ uv run python b2t.py --help
 
 ### Uwagi
 
-- **Cache predykcji:** jeśli `result/<tag>.csv` już istnieje i ma tyle wierszy, ile obrazów w zbiorze, klasyfikacja jest pomijana. Plik zawiera tylko predykcje, więc zmiana `--captioning_model`, `--keyword_extraction_model` albo `--score` go nie unieważnia. Opisy są zawsze czytane z plików `.txt`. Po podmianie checkpointu o tej samej nazwie usuń plik ręcznie.
+- **Cache predykcji:** jeśli `predictions.csv` już istnieje i ma tyle wierszy, ile obrazów w zbiorze, klasyfikacja jest pomijana. Po podmianie checkpointu o tej samej nazwie usuń katalog `<model>/` ręcznie.
+- **Cache opisów:** opisy generowane są tylko dla obrazów, których nie ma jeszcze w puli `_cache/captions/<captioning_model>/`. Inny klasyfikator albo inne `--number_val_images` dolicza tylko brakujące.
+- **Cache słów kluczowych:** jeśli `keywords.json` istnieje, jest wczytywany, więc słowa z GPT są stałe między runami. Żeby wyciągnąć je od nowa, usuń plik. Pusta lista (błąd parsowania odpowiedzi GPT) nie jest zapisywana.
+- Cache nie wykrywa zmian w kodzie ani promptach. Po takiej zmianie usuń odpowiedni plik lub katalog.
 - **`--save_result`** jest parsowany jako tekst, więc `--save_result False` nadal zapisuje wyniki (każdy niepusty napis jest prawdziwy). Nie da się tego wyłączyć z linii poleceń.
-- **`--score vqa`** zapisuje zawsze do `result/vqa_scores.csv`, nadpisując poprzedni plik. Wyniki w `result_vqa_*` były przenoszone ręcznie.
 - **`--number_val_images` + `--score clip`:** jeśli w którejś klasie wszystkie obrazy zostaną sklasyfikowane poprawnie, liczenie score rzuci błąd.
 
 ---
@@ -162,7 +168,7 @@ uv run python analysis.py
 
 Jeśli pliki wyjściowe już istnieją, skrypt pyta `Do you want to overwrite the file [Y,N]:` — dlatego uruchamiaj go interaktywnie.
 
-Typowy przebieg: `b2t.py --score vqa` → przenieś `result/vqa_scores.csv` do `result_vqa_<run>/` → ustaw `run` → `analysis.py`.
+Typowy przebieg: `b2t.py --score vqa` → skopiuj `vqa_scores.csv` z katalogu runu w `outputs/.../runs/` do `result_vqa_<run>/` → ustaw `run` → `analysis.py`.
 
 ---
 
