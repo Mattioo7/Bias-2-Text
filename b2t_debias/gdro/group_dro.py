@@ -20,12 +20,11 @@ from arguments import get_arguments
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
+# Everything heavier than parsing arguments lives in main(): on Windows, DataLoader workers
+# re-import this module, and module-level setup would rebuild the model in every worker.
 args = get_arguments()
 use_cuda = True
-torch.manual_seed(args.seed)
 device = torch.device("cuda" if use_cuda else "cpu")
-
-print(args)
 
 
 def build_model():
@@ -126,7 +125,7 @@ def test(model, test_loader, writer, epoch, log='valid'):
     return worst_accuracy, accuracy
 
 
-def train(train_loader, model, optimizer, epoch):
+def train(train_loader, model, optimizer, group_weight_ema, epoch):
     print('\nEpoch: %d' % epoch)
     
     train_loss = 0
@@ -168,33 +167,36 @@ def train(train_loader, model, optimizer, epoch):
     return train_loss/(batch_idx+1)
 
 
-train_loader, _, valid_loader, test_loader = prepare_data(args)
-# create model
-model = build_model()
-
-if args.optimizer == 'sgd':
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum, weight_decay=args.weight_decay)
-elif args.optimizer == 'adam':
-    optimizer = torch.optim.Adam(model.parameters(), args.lr)
-else:
-    raise NotImplementedError
-
-num_groups = 4
-group_weight_ema = GroupEMA(size=num_groups, step_size=0.01)
-
-log_dir = os.path.join('results', args.dataset, args.name)
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
-    
-writer = SummaryWriter(log_dir)
-
 def main():
+    print(args)
+    torch.manual_seed(args.seed)
+
+    train_loader, _, valid_loader, test_loader = prepare_data(args)
+    # create model
+    model = build_model()
+
+    if args.optimizer == 'sgd':
+        optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                    momentum=args.momentum, weight_decay=args.weight_decay)
+    elif args.optimizer == 'adam':
+        optimizer = torch.optim.Adam(model.parameters(), args.lr)
+    else:
+        raise NotImplementedError
+
+    num_groups = 4
+    group_weight_ema = GroupEMA(size=num_groups, step_size=0.01)
+
+    log_dir = os.path.join('results', args.dataset, args.name)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    writer = SummaryWriter(log_dir)
+
     best_val_acc, best_val_avg_acc = 0, 0
     best_test_acc, best_test_avg_acc = 0, 0
     best_epoch = 0
     for epoch in range(args.epochs):
-        train_loss = train(train_loader, model, optimizer, epoch)
+        train_loss = train(train_loader, model, optimizer, group_weight_ema, epoch)
         writer.add_scalar(f'train/train_loss', train_loss, epoch)
 
         valid_acc, valid_avg_acc = test(model, valid_loader, writer, epoch, 'valid')

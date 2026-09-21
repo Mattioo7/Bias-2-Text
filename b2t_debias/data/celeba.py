@@ -18,14 +18,17 @@ class CelebA(Dataset):
         self.split = split
         self.split_dict = {'train': 0, 'val': 1, 'test': 2}
 
-        self.metadata_df = pd.read_csv(os.path.join(self.data_dir, 'list_attr_celeba.csv'), delim_whitespace=True)
-        self.split_df = pd.read_csv(os.path.join(self.data_dir, 'list_eval_partition.csv'), delim_whitespace=True)
+        # Comma-separated CSVs produced by data/convert_celeba_annotations.py (repo root)
+        self.metadata_df = pd.read_csv(os.path.join(self.data_dir, 'list_attr_celeba.csv'))
+        self.split_df = pd.read_csv(os.path.join(self.data_dir, 'list_eval_partition.csv'))
         self.metadata_df['partition'] = self.split_df['partition']
         self.metadata_df = self.metadata_df[self.split_df['partition'] == self.split_dict[self.split]]
 
         # Get the y values
-        self.y_array = self.metadata_df['Blond_Hair'].values
-        self.confounder_array = self.metadata_df['Male'].values
+        # .copy(): pandas hands back a read-only view, and the -1 -> 0 remap below
+        # writes in place.
+        self.y_array = self.metadata_df['Blond_Hair'].values.copy()
+        self.confounder_array = self.metadata_df['Male'].values.copy()
         self.y_array[self.y_array == -1] = 0
         self.confounder_array[self.confounder_array == -1] = 0
         self.group_array = (self.y_array * 2 + self.confounder_array).astype('int')
@@ -47,7 +50,7 @@ class CelebA(Dataset):
         return len(self.filename_array)
 
     def __getitem__(self, idx):
-        img_filename = os.path.join(self.data_dir, 'img_align_celeba', self.filename_array[idx])
+        img_filename = os.path.join(self.data_dir, 'img_align_celeba', 'data', self.filename_array[idx])
         img = Image.open(img_filename).convert('RGB')
         x = self.transform(img)
 

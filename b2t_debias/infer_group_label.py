@@ -16,6 +16,14 @@ from data.waterbirds import Waterbirds
 import celeba_templates
 import waterbirds_templates
 
+# Default --data-dir per dataset, matching the repo layout: data/cub/data/waterbird_complete95_forest2water2/
+# and data/celeba/. Resolved from this file, so it does not depend on the working directory.
+REPO_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
+DEFAULT_DATA_DIRS = {
+    'waterbirds': os.path.join(REPO_DATA_DIR, 'cub', 'data'),
+    'celeba': REPO_DATA_DIR,
+}
+
 
 def main(args):
     model, preprocess = clip.load('RN50', 'cuda', jit=False)  # RN50, RN101, RN50x4, ViT-B/32
@@ -96,8 +104,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--dataset', default='celeba', choices=['celeba', 'waterbirds'])
-    parser.add_argument('--data_dir', default='/data')
-    parser.add_argument('--save_path', default='./pseudo_bias/celeba.pt')
+    parser.add_argument('--data_dir', default=None,
+                        help='parent folder of the dataset folder (default: the repo data/ layout, see DEFAULT_DATA_DIRS)')
+    parser.add_argument('--save_path', default=None,
+                        help='default: pseudo_bias/<dataset>.pt next to this script, where gdro/scripts/*_b2t.sh look for it')
 
     args = parser.parse_args()
+    if args.data_dir is None:
+        args.data_dir = DEFAULT_DATA_DIRS[args.dataset]
+    if args.save_path is None:
+        args.save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pseudo_bias', f'{args.dataset}.pt')
     main(args)

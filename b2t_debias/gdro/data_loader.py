@@ -37,17 +37,17 @@ def prepare_cub(args):
     ])
     
     cub_train = CUBDataset(
-                    root='/data/waterbird_complete95_forest2water2',
+                    root=os.path.join(args.data_root, 'waterbird_complete95_forest2water2'),
                     split='train', 
                     transform=transform_train,
                     pseudo_bias=args.pseudo_bias)
     cub_valid = CUBDataset(
-                    root='/data/waterbird_complete95_forest2water2',
+                    root=os.path.join(args.data_root, 'waterbird_complete95_forest2water2'),
                     split='val', 
                     transform=transform_valid,
                     pseudo_bias=None)
     cub_test = CUBDataset(
-                    root='/data/waterbird_complete95_forest2water2',
+                    root=os.path.join(args.data_root, 'waterbird_complete95_forest2water2'),
                     split='test', 
                     transform=transform_valid,
                     pseudo_bias=None)
