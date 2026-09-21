@@ -18,7 +18,7 @@ model/*
 function/clipcap.pt
 
 # Outputs
-outputs/
+outputs/*/_cache/
 
 # Other
-/NOTES.md
+#/NOTES.md

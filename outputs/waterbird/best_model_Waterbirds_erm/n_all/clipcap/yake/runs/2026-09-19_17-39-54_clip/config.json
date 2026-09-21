@@ -1,0 +1,19 @@
+{
+  "dataset": "waterbird",
+  "model": "best_model_Waterbirds_erm.pth",
+  "captioning_model": "clipcap",
+  "keyword_extraction_model": "yake",
+  "score": "clip",
+  "vqa_model": "gpt-4o-mini",
+  "number_val_images": null,
+  "celeba_variant": "align",
+  "save_result": true,
+  "device": "cuda:0",
+  "paths": {
+    "caption_pool": "outputs/waterbird/_cache/captions/clipcap/",
+    "predictions": "outputs/waterbird/best_model_Waterbirds_erm/n_all/predictions.csv",
+    "captions": "outputs/waterbird/best_model_Waterbirds_erm/n_all/clipcap/captions.csv",
+    "keywords": "outputs/waterbird/best_model_Waterbirds_erm/n_all/clipcap/yake/keywords.json",
+    "run": "outputs/waterbird/best_model_Waterbirds_erm/n_all/clipcap/yake/runs/2026-09-19_17-39-54_clip/"
+  }
+}
