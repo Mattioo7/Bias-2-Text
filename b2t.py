@@ -46,6 +46,7 @@ warnings.filterwarnings("ignore", category=SourceChangeWarning)
 
 import argparse
 import json
+import sys
 
 import pandas as pd
 import torch
@@ -77,7 +78,7 @@ outputs_dir = 'outputs/'
 model_dir = 'model/'
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type = str, default = 'waterbird', choices=all_datasets, help="dataset") #celeba, waterbird
     parser.add_argument("--model", type=str, default='best_model_Waterbirds_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_Waterbirds_erm.pth, best_model_Waterbirds_dro.pth
@@ -90,7 +91,9 @@ def parse_args():
     parser.add_argument("--celeba_variant", type=str, default='align', choices=list(celeba_variant_dirs),
                         help="Which CelebA image set to use: 'align' (178x218 crops, matches the pretrained checkpoints) or 'raw' (in-the-wild originals). Ignored for waterbird.")
     parser.add_argument("--save_result", default = True)
-    args = parser.parse_args()
+    parser.add_argument("-y", "--yes", action="store_true",
+                        help="Skip the config confirmation prompt. It is skipped anyway when stdin is not a terminal (notebook, pipe, CI).")
+    args = parser.parse_args(argv)
     return args
 
 
@@ -102,7 +105,7 @@ def print_step(title):
 
 def irrelevant_args(args):
     """Options that have no effect with the chosen dataset and score."""
-    skip = set()
+    skip = {'yes'}
     if args.score != 'vqa':
         skip.add('vqa_model')
     if args.dataset != 'celeba':
@@ -118,6 +121,17 @@ def print_config(args, device):
         if name not in skip:
             print(f"{name:<26} {value}")
     print("-" * 48)
+
+
+def confirm_config(args):
+    """Asks whether to run with the printed config. Only in an interactive terminal:
+    without one (Jupyter, piped stdin, scripts, tests) input() would block or fail, so it runs on."""
+    if args.yes or not sys.stdin.isatty():
+        return
+    answer = input("Run with this config? [Y/n] ").strip().lower()
+    if answer not in ("", "y", "yes"):
+        print("Aborted.")
+        sys.exit(0)
 
 
 def output_paths(args):
@@ -384,6 +398,7 @@ if __name__ == "__main__":  #MR added this to prevent an error
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     args = parse_args()
     print_config(args, device)
+    confirm_config(args)
 
     paths = output_paths(args)
     caption_dir = paths["caption_pool"]
