@@ -118,12 +118,12 @@ uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth -
 
 Opisy i słowa kluczowe z GPT (wymaga `OPENAI_API_KEY`, kosztuje):
 ```bash
-uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --captioning_model gpt-4o-mini --keyword_extraction_model gpt-4o-mini --number_val_images 50
+uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --captioning_model gpt-5.6-luna --keyword_extraction_model gpt-5.6-luna --number_val_images 50
 ```
 
 Score VQA zamiast CLIP (wymaga `OPENAI_API_KEY`, jedno zapytanie na obraz):
 ```bash
-uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --score vqa --number_val_images 50
+uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --score vqa --vqa_model gpt-5.6-luna --number_val_images 50
 ```
 
 Test ścieżki VQA bez API i kosztów (losowe odpowiedzi):
@@ -133,7 +133,7 @@ uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth -
 
 Pełny wariant GPT (opisy + słowa kluczowe + VQA):
 ```bash
-uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --captioning_model gpt-4o-mini --keyword_extraction_model gpt-4o-mini --score vqa
+uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --captioning_model gpt-5.6-luna --keyword_extraction_model gpt-5.6-luna --score vqa --vqa_model gpt-5.6-luna
 ```
 
 Lista argumentów:

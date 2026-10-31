@@ -9,7 +9,7 @@ __pycache__/
 .idea/
 
 # Data
-data/celebA/
+data/celeba/
 data/cub/
 *.tar.gz
 
