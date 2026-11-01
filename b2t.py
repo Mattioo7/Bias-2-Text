@@ -80,17 +80,17 @@ model_dir = 'model/'
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type = str, default = 'waterbird', choices=all_datasets, help="dataset") #celeba, waterbird
-    parser.add_argument("--model", type=str, default='best_model_Waterbirds_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_Waterbirds_erm.pth, best_model_Waterbirds_dro.pth
-    parser.add_argument("--captioning_model", type=str, default='clipcap', choices=all_captioning_models)
-    parser.add_argument("--keyword_extraction_model", type=str, default='yake', choices=all_keyword_extraction_models)
-    parser.add_argument("--score", type=str, default='clip', choices=all_scores)
-    parser.add_argument("--vqa_model", type=str, default='gpt-4o-mini', choices=all_vqa_models,
+    parser.add_argument("-d", "--dataset", "--ds", type = str, default = 'waterbird', choices=all_datasets, help="dataset") #celeba, waterbird
+    parser.add_argument("-m", "--model", type=str, default='best_model_Waterbirds_erm.pth') #best_model_CelebA_erm.pth, best_model_CelebA_dro.pth, best_model_Waterbirds_erm.pth, best_model_Waterbirds_dro.pth
+    parser.add_argument("-c", "--captioning_model", "--cap_model", type=str, default='clipcap', choices=all_captioning_models)
+    parser.add_argument("-k", "--keyword_extraction_model", "--kw_ex", type=str, default='yake', choices=all_keyword_extraction_models)
+    parser.add_argument("-s", "--score", "--sc", type=str, default='clip', choices=all_scores)
+    parser.add_argument("-q", "--vqa_model", type=str, default='gpt-4o-mini', choices=all_vqa_models,
                         help="Model answering which keywords are visible in an image (only with --score vqa). 'random' answers 0/1 at random, without the API.")
-    parser.add_argument("--number_val_images", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
-    parser.add_argument("--celeba_variant", type=str, default='align', choices=list(celeba_variant_dirs),
+    parser.add_argument("-n", "--number_val_images", "--n_val_img", type=int, default=None, help="How many images should be used from the original val dataset. This reduces time and costs if a low number is chosen. None uses all images")
+    parser.add_argument("-v", "--celeba_variant", "--cel_var", type=str, default='align', choices=list(celeba_variant_dirs),
                         help="Which CelebA image set to use: 'align' (178x218 crops, matches the pretrained checkpoints) or 'raw' (in-the-wild originals). Ignored for waterbird.")
-    parser.add_argument("--save_result", default = True)
+    parser.add_argument("-r", "--save_result", "--save", default = True)
     parser.add_argument("-y", "--yes", action="store_true",
                         help="Skip the config confirmation prompt. It is skipped anyway when stdin is not a terminal (notebook, pipe, CI).")
     args = parser.parse_args(argv)

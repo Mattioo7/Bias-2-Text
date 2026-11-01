@@ -1,0 +1,21 @@
+,Keyword,Score,Acc.,Bias
+8,bamboo forest,2.828,0.375,S
+12,forest clearing,2.36,0.0,S
+14,green hillside,1.922,0.0,S
+9,dense foliage,1.906,X,S
+10,leafless trees,1.734,0.6,S
+18,red crest,1.5625,0.0,S
+6,brown feathers,1.234,X,S
+15,bird in flight,1.219,X,S
+11,grassy field,0.922,0.0,S
+16,perched bird,0.875,X,S
+7,gray feathers,0.4219,0.0,S
+13,rocky slope,0.4062,X,S
+0,dark bird,0.3281,0.4,S
+2,long tail,0.2656,0.0,S
+4,orange belly,0.0,0.0,S
+19,human presence,-0.1094,X,
+3,orange beak,-0.1719,0.5,
+5,black feathers,-0.2031,X,
+1,large bird,-0.2969,0.5,
+17,open beak,-0.703,0.0,

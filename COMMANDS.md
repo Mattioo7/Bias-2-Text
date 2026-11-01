@@ -48,15 +48,16 @@ Kroki: klasyfikacja zbioru walidacyjnego (cache) → generowanie opisów obrazó
 
 | Argument | Wartości | Domyślnie | Opis |
 |---|---|---|---|
-| `--dataset` | `waterbird`, `celeba` | `waterbird` | Zbiór danych |
-| `--model` | nazwa pliku z `model/` | `best_model_Waterbirds_erm.pth` | Checkpoint klasyfikatora |
-| `--captioning_model` | `clipcap`, `multicap`, `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna` | `clipcap` | Model do generowania opisów. `multicap` = ClipCap, 10 opisów sklejonych w jeden |
-| `--keyword_extraction_model` | `yake`, `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna` | `yake` | Ekstrakcja słów kluczowych |
-| `--score` | `clip`, `vqa` | `clip` | `clip` = score z artykułu, `vqa` = model z `--vqa_model` odpowiada, czy słowo kluczowe widać na obrazie |
-| `--vqa_model` | `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna`, `random` | `gpt-4o-mini` | Model do score VQA (tylko przy `--score vqa`). `random` losuje 0/1 dla każdego słowa bez patrzenia na obraz: darmowy test pipeline'u i punkt odniesienia (różnica poprawne/błędne ≈ 0) |
-| `--number_val_images` | liczba całkowita | brak (wszystkie) | Ogranicza zbiór walidacyjny do pierwszych N obrazów (szybciej / taniej) |
-| `--celeba_variant` | `align`, `raw` | `align` | Zestaw obrazów CelebA. `raw` nie pasuje do checkpointów, więc wyniki nie są porównywalne z artykułem. Dla waterbird ignorowane |
-| `--save_result` | dowolna wartość | `True` | Zapis wyników do CSV (patrz uwagi) |
+| `-d`, `--ds`, `--dataset` | `waterbird`, `celeba` | `waterbird` | Zbiór danych |
+| `-m`, `--model` | nazwa pliku z `model/` | `best_model_Waterbirds_erm.pth` | Checkpoint klasyfikatora |
+| `-c`, `--cap_model`, `--captioning_model` | `clipcap`, `multicap`, `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna` | `clipcap` | Model do generowania opisów. `multicap` = ClipCap, 10 opisów sklejonych w jeden |
+| `-k`, `--kw_ex`, `--keyword_extraction_model` | `yake`, `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna` | `yake` | Ekstrakcja słów kluczowych |
+| `-s`, `--sc`, `--score` | `clip`, `vqa` | `clip` | `clip` = score z artykułu, `vqa` = model z `--vqa_model` odpowiada, czy słowo kluczowe widać na obrazie |
+| `-q`, `--vqa_model` | `gpt-4o`, `gpt-4o-mini`, `gpt-5.6-luna`, `random` | `gpt-4o-mini` | Model do score VQA (tylko przy `--score vqa`). `random` losuje 0/1 dla każdego słowa bez patrzenia na obraz: darmowy test pipeline'u i punkt odniesienia (różnica poprawne/błędne ≈ 0) |
+| `-n`, `--n_val_img`, `--number_val_images` | liczba całkowita | brak (wszystkie) | Ogranicza zbiór walidacyjny do pierwszych N obrazów (szybciej / taniej) |
+| `-v`, `--cel_var`, `--celeba_variant` | `align`, `raw` | `align` | Zestaw obrazów CelebA. `raw` nie pasuje do checkpointów, więc wyniki nie są porównywalne z artykułem. Dla waterbird ignorowane |
+| `-r`, `--save`, `--save_result` | dowolna wartość | `True` | Zapis wyników do CSV (patrz uwagi) |
+| `-y`, `--yes` | flaga (bez wartości) | wyłączona | Pomija pytanie `Run with this config? [Y/n]` i od razu startuje. Pytanie jest pomijane też wtedy, gdy stdin nie jest terminalem (notebook, pipe, CI) |
 
 ### Pliki wyjściowe
 
@@ -78,6 +79,8 @@ outputs/<dataset>[_<celeba_variant>]/            # np. waterbird, celeba_align
 ```
 
 Stare katalogi `result/`, `diff/`, `data/cub/caption/`, `data/celeba/caption_<variant>/` nie są już używane.
+
+Każdy argument ma formę jednoliterową (`-d`) i pełną (`--dataset`). Większość ma też formę skróconą (`--ds`), poza `--model`, `--vqa_model` i `--yes`. Wszystkie formy jednego argumentu działają tak samo.
 
 ### Przykłady
 
@@ -134,6 +137,21 @@ uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth -
 Pełny wariant GPT (opisy + słowa kluczowe + VQA):
 ```bash
 uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --captioning_model gpt-5.6-luna --keyword_extraction_model gpt-5.6-luna --score vqa --vqa_model gpt-5.6-luna
+```
+
+Bez pytania o potwierdzenie configu (np. do skryptów albo długich runów w tle):
+```bash
+uv run python b2t.py --dataset waterbird --model best_model_Waterbirds_erm.pth --yes
+```
+
+Jednoliterowe wersje argumentów (GPT, 50 obrazów, bez potwierdzenia):
+```bash
+uv run python b2t.py -d waterbird -m best_model_Waterbirds_erm.pth -c gpt-5.6-luna -k gpt-5.6-luna -n 50 -y
+```
+
+To samo ze skróconymi wersjami (`--model` nie ma formy skróconej):
+```bash
+uv run python b2t.py --ds waterbird --model best_model_Waterbirds_erm.pth --cap_model gpt-5.6-luna --kw_ex gpt-5.6-luna --n_val_img 50 --yes
 ```
 
 Lista argumentów:

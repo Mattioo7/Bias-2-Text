@@ -1,0 +1,20 @@
+{
+  "dataset": "waterbird",
+  "model": "best_model_Waterbirds_erm.pth",
+  "captioning_model": "gpt-5.6-luna",
+  "keyword_extraction_model": "gpt-5.6-luna",
+  "score": "clip",
+  "vqa_model": "gpt-4o-mini",
+  "number_val_images": 200,
+  "celeba_variant": "align",
+  "save_result": true,
+  "yes": false,
+  "device": "cuda:0",
+  "paths": {
+    "caption_pool": "outputs/waterbird/_cache/captions/gpt-5.6-luna/",
+    "predictions": "outputs/waterbird/best_model_Waterbirds_erm/n200/predictions.csv",
+    "captions": "outputs/waterbird/best_model_Waterbirds_erm/n200/gpt-5.6-luna/captions.csv",
+    "keywords": "outputs/waterbird/best_model_Waterbirds_erm/n200/gpt-5.6-luna/gpt-5.6-luna/keywords.json",
+    "run": "outputs/waterbird/best_model_Waterbirds_erm/n200/gpt-5.6-luna/gpt-5.6-luna/runs/2026-09-21_23-53-32_clip/"
+  }
+}
